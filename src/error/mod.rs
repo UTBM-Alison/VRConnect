@@ -22,6 +22,9 @@ pub enum VitalError {
 
     #[error("Data processing error: {0}")]
     Processing(String),
+
+    #[error("Regex error: {0}")]
+    Regex(#[from] fancy_regex::Error),
 }
 
 pub type Result<T> = std::result::Result<T, VitalError>;

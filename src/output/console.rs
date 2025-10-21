@@ -20,116 +20,115 @@ impl ConsoleVitalOutput {
     }
 
     fn output_compact(&self, data: &ProcessedData) {
-        let header = format!("[{}] Device: {}", data.timestamp.format("%H:%M:%S"), data.device_id);
-        
+        let header = format!(
+            "[{}] 🏥 Vital Update - {} tracks",
+            data.timestamp.format("%Y-%m-%dT%H:%M:%S%.9f"),
+            data.all_tracks.len()
+        );
+
         if self.colorized {
             println!("{}", header.bright_cyan().bold());
         } else {
             println!("{}", header);
         }
 
-        for track in &data.all_tracks {
+        // Show first 5 tracks
+        for track in data.all_tracks.iter().take(5) {
             let line = format!(
-                "  {} [{:?}]: {} {}",
-                track.track_name, track.track_type, track.display_value, track.unit
+                "  {}: {} {} ({})",
+                // FIXED: Use 'name' instead of 'track_name'
+                track.name, track.display_value, track.unit, track.room_name
             );
 
             if self.colorized {
-                let colored_line = match track.track_type {
-                    TrackType::Number => line.green(),
-                    TrackType::Waveform => line.blue(),
-                    TrackType::Other => line.yellow(),
-                };
-                println!("{}", colored_line);
+                println!("{}", line);
             } else {
                 println!("{}", line);
             }
         }
-        println!();
+
+        if data.all_tracks.len() > 5 {
+            let remaining = data.all_tracks.len() - 5;
+            let line = format!("  ... and {} more tracks", remaining);
+            
+            if self.colorized {
+                println!("{}", line.dimmed());
+            } else {
+                println!("{}", line);
+            }
+        }
     }
 
     fn output_verbose(&self, data: &ProcessedData) {
-        let divider = "=".repeat(80);
-        
         if self.colorized {
-            println!("{}", divider.bright_cyan());
-            println!("{}", format!("VITAL DATA UPDATE - {}", data.timestamp).bright_cyan().bold());
-            println!("{}", divider.bright_cyan());
+            println!("\n{}", "═".repeat(60).bright_cyan());
+            println!("{}", "🏥 VITAL DATA UPDATE".bright_cyan().bold());
+            println!("{}", "═".repeat(60).bright_cyan());
         } else {
-            println!("{}", divider);
-            println!("VITAL DATA UPDATE - {}", data.timestamp);
-            println!("{}", divider);
+            println!("\n{}", "═".repeat(60));
+            println!("🏥 VITAL DATA UPDATE");
+            println!("{}", "═".repeat(60));
         }
 
-        if self.colorized {
-            println!("{}: {}", "Device ID".bright_yellow(), data.device_id.bright_white().bold());
-        } else {
-            println!("Device ID: {}", data.device_id);
-        }
+        println!("Device: {}", data.device_id);
+        println!("Timestamp: {}", data.timestamp.format("%Y-%m-%d %H:%M:%S%.3f"));
+        println!("Rooms: {}", data.rooms.len());
+        println!("Total Tracks: {}", data.all_tracks.len());
 
         for room in &data.rooms {
-            println!();
             if self.colorized {
-                println!("{} {} (ID: {})", 
-                    "Room:".bright_magenta().bold(), 
-                    room.room_name.bright_white().bold(),
-                    room.room_id
+                println!(
+                    "\n{} {} (Index: {})",
+                    "Room:".bright_blue().bold(),
+                    // FIXED: Use 'room_index' instead of 'room_id'
+                    room.room_name.bright_white(),
+                    room.room_index
                 );
             } else {
-                println!("Room: {} (ID: {})", room.room_name, room.room_id);
+                println!("\nRoom: {} (Index: {})", room.room_name, room.room_index);
             }
 
             for track in &room.tracks {
-                self.output_track_verbose(track);
+                self.print_track_verbose(track, "  ");
             }
         }
 
         if self.colorized {
-            println!("{}", divider.bright_cyan());
+            println!("\n{}", "═".repeat(60).bright_cyan());
         } else {
-            println!("{}", divider);
+            println!("\n{}", "═".repeat(60));
         }
-        println!();
     }
 
-    fn output_track_verbose(&self, track: &ProcessedTrack) {
-        let indent = "    ";
-        
+    fn print_track_verbose(&self, track: &ProcessedTrack, indent: &str) {
         if self.colorized {
-            println!("{}{}: {}", indent, "Track".bright_blue().bold(), track.track_name.bright_white());
-            println!("{}  {} {}", indent, "ID:".dimmed(), track.track_id.dimmed());
+            // FIXED: Use 'name' instead of 'track_name'
+            println!("{}{}: {}", indent, "Track".bright_blue().bold(), track.name.bright_white());
             println!("{}  {} {:?}", indent, "Type:".dimmed(), track.track_type);
-            println!("{}  {} {}", indent, "Value:".bright_green(), track.display_value.bright_white().bold());
-            
-            if !track.unit.is_empty() {
-                println!("{}  {} {}", indent, "Unit:".dimmed(), track.unit);
-            }
+            println!("{}  {} {}", indent, "Value:".dimmed(), track.display_value.bright_green());
+            println!("{}  {} {}", indent, "Unit:".dimmed(), track.unit);
+            println!("{}  {} {}", indent, "Timestamp:".dimmed(), track.timestamp.format("%H:%M:%S%.3f"));
             
             if let Some(stats) = &track.waveform_stats {
-                println!("{}  {} {} points", indent, "Waveform:".bright_blue(), stats.count);
-                println!("{}    Min: {:.3}, Max: {:.3}, Avg: {:.3}", 
-                    indent, stats.min, stats.max, stats.avg);
+                println!("{}  {} min={:.3}, max={:.3}, avg={:.3}, count={}", 
+                    indent,
+                    "Stats:".dimmed(),
+                    stats.min, stats.max, stats.avg, stats.count
+                );
             }
-            
-            println!("{}  {} {}", indent, "Timestamp:".dimmed(), 
-                track.timestamp.format("%Y-%m-%d %H:%M:%S").to_string().dimmed());
         } else {
-            println!("{}Track: {}", indent, track.track_name);
-            println!("{}  ID: {}", indent, track.track_id);
+            // FIXED: Use 'name' instead of 'track_name'
+            println!("{}Track: {}", indent, track.name);
             println!("{}  Type: {:?}", indent, track.track_type);
             println!("{}  Value: {}", indent, track.display_value);
-            
-            if !track.unit.is_empty() {
-                println!("{}  Unit: {}", indent, track.unit);
-            }
+            println!("{}  Unit: {}", indent, track.unit);
+            println!("{}  Timestamp: {}", indent, track.timestamp.format("%H:%M:%S%.3f"));
             
             if let Some(stats) = &track.waveform_stats {
-                println!("{}  Waveform: {} points", indent, stats.count);
-                println!("{}    Min: {:.3}, Max: {:.3}, Avg: {:.3}", 
-                    indent, stats.min, stats.max, stats.avg);
+                println!("{}  Stats: min={:.3}, max={:.3}, avg={:.3}, count={}", 
+                    indent, stats.min, stats.max, stats.avg, stats.count
+                );
             }
-            
-            println!("{}  Timestamp: {}", indent, track.timestamp.format("%Y-%m-%d %H:%M:%S"));
         }
     }
 }

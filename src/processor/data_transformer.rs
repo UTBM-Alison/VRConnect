@@ -1,7 +1,8 @@
-use crate::domain::{ProcessedData, ProcessedRoom, ProcessedTrack, TrackType, VitalData, WaveformStats};
-use chrono::{DateTime, Utc};
+use crate::domain::*;
+use chrono::{TimeZone, Utc};
 use tracing::debug;
 
+#[derive(Clone)]
 pub struct VitalDataTransformer;
 
 impl VitalDataTransformer {
@@ -10,134 +11,147 @@ impl VitalDataTransformer {
     }
 
     pub fn transform(&self, vital_data: VitalData) -> ProcessedData {
-        let rooms = vital_data
-            .rooms
-            .into_iter()
-            .map(|room| self.transform_room(room))
-            .collect();
+        let mut processed_rooms = Vec::new();
+        let mut all_tracks = Vec::new();
 
-        ProcessedData::new(vital_data.device_id, rooms)
-    }
+        debug!("Transforming data with {} rooms", vital_data.rooms.len());
 
-    fn transform_room(&self, room: crate::domain::VitalRoom) -> ProcessedRoom {
-        let tracks = room
-            .tracks
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|track| self.transform_track(track, &room.room_name))
-            .collect();
+        if !vital_data.rooms.is_empty() {
+            for (room_index, room) in vital_data.rooms.iter().enumerate() {
+                let room_name = room.room_name.clone()
+                    .unwrap_or_else(|| format!("Room {}", room_index));
+                
+                let mut room_tracks = Vec::new();
 
-        ProcessedRoom {
-            room_id: room.room_id,
-            room_name: room.room_name,
-            tracks,
+                // Now tracks is a Vec, not Option<Vec>
+                debug!("Room {} has {} tracks", room_index, room.tracks.len());
+                
+                for (track_index, track) in room.tracks.iter().enumerate() {
+                    // Now records is a Vec, not Option<Vec>
+                    debug!("Track {} has {} records", track_index, track.records.len());
+                    
+                    for (record_index, record) in track.records.iter().enumerate() {
+                        let processed_track = self.process_track(
+                            track,
+                            record,
+                            room_index as i32,
+                            &room_name,
+                            track_index as i32,
+                            record_index as i32,
+                        );
+                        
+                        room_tracks.push(processed_track.clone());
+                        all_tracks.push(processed_track);
+                    }
+                }
+
+                processed_rooms.push(ProcessedRoom {
+                    room_index: room_index as i32,
+                    room_name: room_name.clone(),
+                    tracks: room_tracks,
+                });
+            }
+        }
+
+        debug!("Transformation complete: {} total tracks", all_tracks.len());
+
+        ProcessedData {
+            device_id: vital_data.vr_code,
+            rooms: processed_rooms,
+            all_tracks,
+            timestamp: Utc::now(),
         }
     }
 
-    fn transform_track(
+    fn process_track(
         &self,
-        track: crate::domain::VitalTrack,
+        track: &VitalTrack,
+        record: &VitalRecord,
+        room_index: i32,
         room_name: &str,
-    ) -> Option<ProcessedTrack> {
-        let records = track.records?;
-        if records.is_empty() {
-            return None;
-        }
+        track_index: i32,
+        record_index: i32,
+    ) -> ProcessedTrack {
+        let track_name = track.name.clone()
+            .or_else(|| track.display_name.clone())
+            .unwrap_or_else(|| format!("Track-{}-{}", room_index, track_index));
+        
+        let track_type_str = track.track_type.as_deref().unwrap_or("other");
+        let unit = track.unit.clone().unwrap_or_default();
 
-        let record = &records[0];
-        let timestamp = DateTime::from_timestamp_millis(record.timestamp)
+        let (track_type, display_value, raw_value, waveform_stats) = 
+            self.process_value(&record.value, track_type_str);
+
+        let timestamp = record.get_effective_timestamp()
+            .and_then(|ts| Utc.timestamp_millis_opt(ts).single())
             .unwrap_or_else(Utc::now);
 
-        match &record.value {
-            serde_json::Value::Number(num) => {
-                let value = num.as_f64()?;
-                Some(ProcessedTrack {
-                    track_id: track.track_id,
-                    track_name: track.track_name,
-                    room_name: room_name.to_string(),
-                    track_type: TrackType::Number,
-                    unit: track.unit,
-                    display_value: format!("{:.3}", value),
-                    raw_value: Some(value),
-                    waveform_stats: None,
-                    timestamp,
-                })
+        ProcessedTrack {
+            name: track_name,
+            display_value,
+            raw_value,
+            unit,
+            timestamp,
+            room_index,
+            room_name: room_name.to_string(),
+            track_index,
+            record_index,
+            track_type,
+            waveform_stats,
+        }
+    }
+
+    fn process_value(
+        &self,
+        value: &serde_json::Value,
+        track_type: &str,
+    ) -> (TrackType, String, Option<f64>, Option<WaveformStats>) {
+        match value {
+            serde_json::Value::Number(n) => {
+                let num = n.as_f64().unwrap_or(0.0);
+                (
+                    TrackType::Number,
+                    format!("{:.3}", num),
+                    Some(num),
+                    None,
+                )
             }
-            serde_json::Value::Array(arr) => {
-                let values: Vec<f64> = arr
+            serde_json::Value::Array(arr) if track_type == "wav" => {
+                let numbers: Vec<f64> = arr
                     .iter()
                     .filter_map(|v| v.as_f64())
                     .collect();
 
-                if values.is_empty() {
-                    Some(ProcessedTrack {
-                        track_id: track.track_id,
-                        track_name: track.track_name,
-                        room_name: room_name.to_string(),
-                        track_type: TrackType::Waveform,
-                        unit: track.unit,
-                        display_value: "0 points".to_string(),
-                        raw_value: None,
-                        waveform_stats: None,
-                        timestamp,
-                    })
-                } else {
-                    let stats = self.calculate_waveform_stats(&values);
-                    Some(ProcessedTrack {
-                        track_id: track.track_id,
-                        track_name: track.track_name,
-                        room_name: room_name.to_string(),
-                        track_type: TrackType::Waveform,
-                        unit: track.unit,
-                        display_value: format!(
-                            "{} points [min: {:.3}, max: {:.3}, avg: {:.3}]",
-                            stats.count, stats.min, stats.max, stats.avg
-                        ),
-                        raw_value: None,
-                        waveform_stats: Some(stats),
-                        timestamp,
-                    })
+                if numbers.is_empty() {
+                    return (TrackType::Waveform, "0 points".to_string(), None, None);
                 }
-            }
-            other => {
-                Some(ProcessedTrack {
-                    track_id: track.track_id,
-                    track_name: track.track_name,
-                    room_name: room_name.to_string(),
-                    track_type: TrackType::Other,
-                    unit: track.unit,
-                    display_value: format!("{}", other),
-                    raw_value: None,
-                    waveform_stats: None,
-                    timestamp,
-                })
-            }
-        }
-    }
 
-    fn calculate_waveform_stats(&self, values: &[f64]) -> WaveformStats {
-        let min = values.iter().fold(f64::INFINITY, |a, &b| a.min(b));
-        let max = values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
-        let sum: f64 = values.iter().sum();
-        let avg = sum / values.len() as f64;
+                let min = numbers.iter().copied().fold(f64::INFINITY, f64::min);
+                let max = numbers.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                let sum: f64 = numbers.iter().sum();
+                let avg = sum / numbers.len() as f64;
+                let count = numbers.len();
 
-        WaveformStats {
-            min,
-            max,
-            avg,
-            count: values.len(),
+                let stats = WaveformStats { min, max, avg, count };
+                let display = format!(
+                    "{} points ({:.3} to {:.3}, avg: {:.3})",
+                    count, min, max, avg
+                );
+
+                (TrackType::Waveform, display, None, Some(stats))
+            }
+            serde_json::Value::String(s) => {
+                (TrackType::String, s.clone(), None, None)
+            }
+            _ => {
+                (TrackType::Other, value.to_string(), None, None)
+            }
         }
     }
 }
 
 impl Default for VitalDataTransformer {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Clone for VitalDataTransformer {
-    fn clone(&self) -> Self {
         Self::new()
     }
 }

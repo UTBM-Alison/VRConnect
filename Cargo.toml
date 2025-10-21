@@ -1,5 +1,5 @@
 [package]
-name = "vital_connect"
+name = "vrconnect"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,8 +8,9 @@ edition = "2021"
 tokio = { version = "1.35", features = ["full"] }
 tokio-stream = "0.1"
 
-# Socket.IO - FIXED: underscore not hyphen
-rust_socketio = { version = "0.6", features = ["async"] }
+# WebSocket for Socket.IO server
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
 
 # Bluetooth Low Energy
 bluer = { version = "0.17", features = ["bluetoothd"] }
@@ -19,7 +20,7 @@ uuid = "1.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 flate2 = "1.0"
-regex = "1.10"
+fancy-regex = "0.13"
 
 # Logging
 tracing = "0.1"

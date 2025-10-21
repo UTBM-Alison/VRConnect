@@ -61,8 +61,11 @@ impl VitalProcessor {
             None
         };
 
-        // Start Socket.IO input
-        let socketio_input = SocketIOServerInput::new(self.config.socket_url());
+	// Change this line:
+	let socketio_input = SocketIOServerInput::new(
+    	    self.config.host.clone(),
+            self.config.port
+	);
         let input_task = {
             let tx = tx.clone();
             tokio::spawn(async move {

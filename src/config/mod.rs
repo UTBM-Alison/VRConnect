@@ -9,11 +9,11 @@ pub struct Config {
     pub host: String,
 
     /// Socket.IO server port
-    #[arg(long, default_value = "3000")]
+    #[arg(long, short = 'p', default_value = "3000")]  // Added short option -p
     pub port: u16,
 
     /// Enable verbose console output
-    #[arg(long, default_value = "false")]
+    #[arg(long, short = 'v', default_value = "false")]  // Added short option -v
     pub verbose: bool,
 
     /// Enable colorized console output
