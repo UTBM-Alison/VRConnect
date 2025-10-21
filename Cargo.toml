@@ -1,0 +1,40 @@
+[package]
+name = "vital_connect"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+tokio-stream = "0.1"
+
+# Socket.IO - FIXED: underscore not hyphen
+rust_socketio = { version = "0.6", features = ["async"] }
+
+# Bluetooth Low Energy
+bluer = { version = "0.17", features = ["bluetoothd"] }
+uuid = "1.6"
+
+# Data processing
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+flate2 = "1.0"
+regex = "1.10"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# CLI and display
+clap = { version = "4.4", features = ["derive"] }
+colored = "2.1"
+
+# Time handling
+chrono = "0.4"
+
+# Async traits
+async-trait = "0.1"
