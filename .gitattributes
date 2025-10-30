@@ -1,0 +1,24 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Rust files
+*.rs text eol=lf
+
+# Configuration files
+*.toml text eol=lf
+*.env text eol=lf
+*.md text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+
+# Cargo.lock should always use LF
+Cargo.lock text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

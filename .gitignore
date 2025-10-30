@@ -1,0 +1,143 @@
+# Rust - Binaires et cache
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo
+Cargo.lock
+
+# Fichiers de build
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# Logs générés par VRConnect
+/logs/
+*.log
+debug.log
+vrconnect-*.log
+
+# Fichiers de configuration sensibles
+.env
+*.env
+!example.env
+production.env
+staging.env
+local.env
+
+# Fichiers de test et debug
+/tmp/
+/temp/
+test_*.log
+debug_*.log
+*_capture.log
+complete_*.log
+troubleshoot.log
+
+# IDEs et éditeurs
+# VSCode
+.vscode/
+*.code-workspace
+
+# IntelliJ / CLion / RustRover
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Documentation builds
+/doc/book/
+/doc/target/
+
+# Coverage reports
+/coverage/
+*.profraw
+*.profdata
+tarpaulin-report.html
+cobertura.xml
+
+# Benchmark results
+/benches/results/
+
+# Données de test
+/test_data/
+/mock_data/
+
+# Fichiers temporaires de développement
+scratch.txt
+notes.txt
+TODO.txt
+
+# Certificats et clés (IMPORTANT pour la sécurité)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Base de données locale (si jamais utilisée)
+*.db
+*.sqlite
+*.sqlite3
+
+# Fichiers de CI/CD temporaires
+.ci_cache/
+.deploy_cache/
+
+# Profiling et flame graphs
+flamegraph.svg
+perf.data
+perf.data.old
+
+# Rust analyzer
+rust-project.json
+
+# Backup de systemd (si copié localement)
+*.service.bak
