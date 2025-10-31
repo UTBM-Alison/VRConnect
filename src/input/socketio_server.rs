@@ -176,7 +176,9 @@ impl SocketIOServer {
         write
             .send(Message::Text(connection_response.clone()))
             .await
-            .map_err(|e| VitalError::SocketIo(format!("Failed to send connection response: {}", e)))?;
+            .map_err(|e| {
+                VitalError::SocketIo(format!("Failed to send connection response: {}", e))
+            })?;
 
         log::debug!("Sent connection response to {}", addr);
 
@@ -211,14 +213,16 @@ impl SocketIOServer {
                         write
                             .send(Message::Text("3".to_string()))
                             .await
-                            .map_err(|e| VitalError::SocketIo(format!("Failed to send pong: {}", e)))?;
+                            .map_err(|e| {
+                                VitalError::SocketIo(format!("Failed to send pong: {}", e))
+                            })?;
                     } else if text.starts_with("40") {
                         // Socket.IO connect
                         log::debug!("Socket.IO namespace connected: {}", addr);
                     } else if text.starts_with("42") {
                         // Socket.IO event
                         let event_data = &text[2..];
-                        
+
                         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(event_data) {
                             if let Some(arr) = parsed.as_array() {
                                 if let Some(event_name) = arr.get(0).and_then(|v| v.as_str()) {
@@ -235,12 +239,20 @@ impl SocketIOServer {
                     } else if text.starts_with("451-") {
                         // Binary event placeholder
                         let placeholder_data = &text[4..];
-                        log::debug!("Binary event placeholder from {}: {}", addr, placeholder_data);
+                        log::debug!(
+                            "Binary event placeholder from {}: {}",
+                            addr,
+                            placeholder_data
+                        );
                         pending_binary_event = Some(placeholder_data.to_string());
                     }
                 }
                 Ok(Message::Binary(data)) => {
-                    log::debug!("Received binary message from {}, length: {}", addr, data.len());
+                    log::debug!(
+                        "Received binary message from {}, length: {}",
+                        addr,
+                        data.len()
+                    );
 
                     // Debug log raw binary
                     if debug_enabled {

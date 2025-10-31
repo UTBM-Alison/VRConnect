@@ -108,11 +108,7 @@ impl BleOutput {
         adapter.set_powered(true).await?;
         adapter.set_discoverable(true).await?;
 
-        log::info!(
-            "Adapter: {} ({})",
-            adapter.name(),
-            adapter.address().await?
-        );
+        log::info!("Adapter: {} ({})", adapter.name(), adapter.address().await?);
 
         let app = self.create_application().await?;
         let app_handle = adapter.serve_gatt_application(app).await?;
@@ -206,7 +202,10 @@ impl BleOutput {
                                 if let Some(data) = &current_data {
                                     match notifier.notify(data.clone()).await {
                                         Ok(_) => {
-                                            log::debug!("✓ Notification sent: {} bytes", data.len());
+                                            log::debug!(
+                                                "✓ Notification sent: {} bytes",
+                                                data.len()
+                                            );
                                         }
                                         Err(e) => {
                                             log::warn!("Notification send failed: {}", e);
@@ -283,7 +282,11 @@ impl BleOutput {
 
         // Check payload size
         if size > MAX_BLE_PAYLOAD {
-            log::warn!("⚠️  BLE payload too large: {} bytes (max: {})", size, MAX_BLE_PAYLOAD);
+            log::warn!(
+                "⚠️  BLE payload too large: {} bytes (max: {})",
+                size,
+                MAX_BLE_PAYLOAD
+            );
             log::warn!("   Truncating to fit MTU limit");
 
             let truncated = json_bytes[..MAX_BLE_PAYLOAD].to_vec();

@@ -79,10 +79,7 @@ impl ProcessedData {
     /// # Returns
     /// New ProcessedData instance
     pub fn new(device_id: String, rooms: Vec<ProcessedRoom>) -> Self {
-        let all_tracks = rooms
-            .iter()
-            .flat_map(|room| room.tracks.clone())
-            .collect();
+        let all_tracks = rooms.iter().flat_map(|room| room.tracks.clone()).collect();
 
         Self {
             device_id,
@@ -129,28 +126,273 @@ impl ProcessedTrack {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
 
+    /// ID SRS: SRS-TEST-PDATA-001
+    /// Title: Test ProcessedData creation
+    ///
+    /// Description: VRConnect shall create ProcessedData with device_id,
+    /// rooms, and automatically flatten all tracks.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_processed_data_new() {
-        // TODO: Implement ProcessedData construction test
-        assert!(true);
+        let track1 = ProcessedTrack {
+            name: "HR".to_string(),
+            display_value: "75.000".to_string(),
+            raw_value: Some(75.0),
+            unit: "bpm".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Number,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        let room = ProcessedRoom {
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            tracks: vec![track1.clone()],
+        };
+
+        let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+
+        assert_eq!(data.device_id, "VR-TEST");
+        assert_eq!(data.rooms.len(), 1);
+        assert_eq!(data.all_tracks.len(), 1);
+        assert_eq!(data.all_tracks[0].name, "HR");
     }
 
+    /// ID SRS: SRS-TEST-PDATA-002
+    /// Title: Test ProcessedData with multiple rooms
+    ///
+    /// Description: VRConnect shall flatten tracks from all rooms into
+    /// all_tracks vector.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_get_non_waveform_tracks() {
-        // TODO: Implement non-waveform filtering test
-        assert!(true);
+    fn test_processed_data_multiple_rooms() {
+        let track1 = ProcessedTrack {
+            name: "HR".to_string(),
+            display_value: "75.000".to_string(),
+            raw_value: Some(75.0),
+            unit: "bpm".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Number,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        let track2 = ProcessedTrack {
+            name: "SpO2".to_string(),
+            display_value: "98.000".to_string(),
+            raw_value: Some(98.0),
+            unit: "%".to_string(),
+            timestamp: Utc::now(),
+            room_index: 1,
+            room_name: "BED_02".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Number,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        let room1 = ProcessedRoom {
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            tracks: vec![track1],
+        };
+
+        let room2 = ProcessedRoom {
+            room_index: 1,
+            room_name: "BED_02".to_string(),
+            tracks: vec![track2],
+        };
+
+        let data = ProcessedData::new("VR-TEST".to_string(), vec![room1, room2]);
+
+        assert_eq!(data.rooms.len(), 2);
+        assert_eq!(data.all_tracks.len(), 2);
+        assert_eq!(data.all_tracks[0].room_name, "BED_01");
+        assert_eq!(data.all_tracks[1].room_name, "BED_02");
     }
 
+    /// ID SRS: SRS-TEST-PDATA-003
+    /// Title: Test ProcessedTrack with Number type
+    ///
+    /// Description: VRConnect shall create ProcessedTrack for numeric values
+    /// with proper display formatting.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_is_waveform() {
-        // TODO: Implement waveform detection test
-        assert!(true);
+    fn test_processed_track_number() {
+        let track = ProcessedTrack {
+            name: "HR".to_string(),
+            display_value: "75.000".to_string(),
+            raw_value: Some(75.0),
+            unit: "bpm".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Number,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        assert_eq!(track.track_type, TrackType::Number);
+        assert_eq!(track.raw_value, Some(75.0));
+        assert!(track.waveform_stats.is_none());
+        assert!(track.waveform_points.is_none());
     }
 
+    /// ID SRS: SRS-TEST-PDATA-004
+    /// Title: Test ProcessedTrack with Waveform type
+    ///
+    /// Description: VRConnect shall create ProcessedTrack for waveform data
+    /// with statistics and points array.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_processed_track_waveform() {
+        let points = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let stats = WaveformStats {
+            min: 1.0,
+            max: 5.0,
+            avg: 3.0,
+            count: 5,
+        };
+
+        let track = ProcessedTrack {
+            name: "ECG".to_string(),
+            display_value: "5 points (1.000 to 5.000, avg: 3.000)".to_string(),
+            raw_value: None,
+            unit: "mV".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Waveform,
+            waveform_stats: Some(stats.clone()),
+            waveform_points: Some(points.clone()),
+        };
+
+        assert_eq!(track.track_type, TrackType::Waveform);
+        assert!(track.raw_value.is_none());
+        assert!(track.waveform_stats.is_some());
+        assert_eq!(track.waveform_points.as_ref().unwrap().len(), 5);
+
+        let stored_stats = track.waveform_stats.unwrap();
+        assert_eq!(stored_stats.min, 1.0);
+        assert_eq!(stored_stats.max, 5.0);
+        assert_eq!(stored_stats.avg, 3.0);
+        assert_eq!(stored_stats.count, 5);
+    }
+
+    /// ID SRS: SRS-TEST-PDATA-005
+    /// Title: Test ProcessedTrack with String type
+    ///
+    /// Description: VRConnect shall create ProcessedTrack for string values.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_processed_track_string() {
+        let track = ProcessedTrack {
+            name: "ALARM_MSG".to_string(),
+            display_value: "HR High".to_string(),
+            raw_value: None,
+            unit: "".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::String,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        assert_eq!(track.track_type, TrackType::String);
+        assert_eq!(track.display_value, "HR High");
+        assert!(track.raw_value.is_none());
+    }
+
+    /// ID SRS: SRS-TEST-PDATA-006
+    /// Title: Test TrackType serialization
+    ///
+    /// Description: VRConnect shall serialize/deserialize TrackType enum
+    /// in lowercase format.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_track_type_serialization() {
-        // TODO: Implement TrackType serialization test
-        assert!(true);
+        use serde_json;
+
+        assert_eq!(
+            serde_json::to_string(&TrackType::Number).unwrap(),
+            "\"number\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TrackType::Waveform).unwrap(),
+            "\"waveform\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TrackType::String).unwrap(),
+            "\"string\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TrackType::Other).unwrap(),
+            "\"other\""
+        );
+    }
+
+    /// ID SRS: SRS-TEST-PDATA-007
+    /// Title: Test WaveformStats serialization
+    ///
+    /// Description: VRConnect shall serialize/deserialize WaveformStats
+    /// with min, max, avg, count fields.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_waveform_stats_serialization() {
+        let stats = WaveformStats {
+            min: -0.5,
+            max: 1.5,
+            avg: 0.5,
+            count: 100,
+        };
+
+        let json = serde_json::to_string(&stats).unwrap();
+        let deserialized: WaveformStats = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.min, stats.min);
+        assert_eq!(deserialized.max, stats.max);
+        assert_eq!(deserialized.avg, stats.avg);
+        assert_eq!(deserialized.count, stats.count);
+    }
+
+    /// ID SRS: SRS-TEST-PDATA-008
+    /// Title: Test ProcessedData with empty rooms
+    ///
+    /// Description: VRConnect shall handle empty rooms vector correctly.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_processed_data_empty_rooms() {
+        let data = ProcessedData::new("VR-EMPTY".to_string(), vec![]);
+
+        assert_eq!(data.device_id, "VR-EMPTY");
+        assert_eq!(data.rooms.len(), 0);
+        assert_eq!(data.all_tracks.len(), 0);
     }
 }

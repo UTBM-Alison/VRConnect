@@ -55,7 +55,7 @@ pub struct Config {
     pub output_ble_enabled: bool,
 
     /// BLE device name
-    #[arg(long, default_value = "VitalConnect")]
+    #[arg(long, default_value = "VRConnect")]
     pub output_ble_device_name: String,
 
     /// BLE service UUID
@@ -146,7 +146,10 @@ impl Config {
         // Validate UUID format if BLE enabled
         if self.output_ble_enabled {
             if Uuid::parse_str(&self.output_ble_service_uuid).is_err() {
-                return Err(format!("Invalid BLE service UUID: {}", self.output_ble_service_uuid));
+                return Err(format!(
+                    "Invalid BLE service UUID: {}",
+                    self.output_ble_service_uuid
+                ));
             }
         }
 
@@ -179,33 +182,193 @@ impl Config {
 mod tests {
     use super::*;
 
+    /// ID SRS: SRS-TEST-CFG-001
+    /// Title: Test Config default values
+    ///
+    /// Description: VRConnect shall provide sensible default values for
+    /// all configuration parameters.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_config_validation_valid() {
-        // TODO: Implement valid configuration test
-        assert!(true);
+    fn test_config_defaults() {
+        // Parse empty args to get defaults
+        let config = Config::parse_from(vec!["vrconnect"]);
+
+        assert_eq!(config.socketio_host, "127.0.0.1");
+        assert_eq!(config.socketio_port, 3000);
+        assert!(config.output_console_enabled);
+        assert!(!config.output_console_verbose);
+        assert!(config.output_console_colorized);
+        assert!(!config.output_ble_enabled); // BLE disabled by default
+        assert_eq!(config.output_ble_device_name, "VRConnect");
+        assert!(!config.debug_enabled);
+        assert_eq!(config.log_level, "INFO");
+        assert_eq!(config.log_dir, "./logs");
     }
 
+    /// ID SRS: SRS-TEST-CFG-002
+    /// Title: Test Config CLI parsing - port
+    ///
+    /// Description: VRConnect shall parse Socket.IO port from CLI arguments.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_config_validation_invalid_port() {
-        // TODO: Implement invalid port test
-        assert!(true);
+    fn test_config_parse_port() {
+        let config = Config::parse_from(vec!["vrconnect", "--socketio-port", "5000"]);
+        assert_eq!(config.socketio_port, 5000);
     }
 
+    /// ID SRS: SRS-TEST-CFG-003
+    /// Title: Test Config CLI parsing - host
+    ///
+    /// Description: VRConnect shall parse Socket.IO host from CLI arguments.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_config_validation_invalid_uuid() {
-        // TODO: Implement invalid UUID test
-        assert!(true);
+    fn test_config_parse_host() {
+        let config = Config::parse_from(vec!["vrconnect", "--socketio-host", "0.0.0.0"]);
+        assert_eq!(config.socketio_host, "0.0.0.0");
     }
 
+    /// ID SRS: SRS-TEST-CFG-004
+    /// Title: Test Config CLI parsing - verbose
+    ///
+    /// Description: VRConnect shall parse verbose flag from CLI arguments.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_config_merge() {
-        // TODO: Implement configuration merge test
-        assert!(true);
+    fn test_config_parse_verbose() {
+        let config = Config::parse_from(vec!["vrconnect", "--output-console-verbose"]);
+        assert!(config.output_console_verbose);
     }
 
+    /// ID SRS: SRS-TEST-CFG-005
+    /// Title: Test Config CLI parsing - BLE device name
+    ///
+    /// Description: VRConnect shall parse BLE device name from CLI arguments.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_socket_url_construction() {
-        // TODO: Implement URL construction test
-        assert!(true);
+    fn test_config_parse_ble_name() {
+        let config = Config::parse_from(vec!["vrconnect", "--output-ble-device-name", "MyDevice"]);
+        assert_eq!(config.output_ble_device_name, "MyDevice");
+    }
+
+    /// ID SRS: SRS-TEST-CFG-006
+    /// Title: Test Config default BLE disabled
+    ///
+    /// Description: VRConnect shall disable BLE output by default.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_config_ble_disabled_default() {
+        let config = Config::parse_from(vec!["vrconnect"]);
+        assert!(!config.output_ble_enabled);
+    }
+
+    /// ID SRS: SRS-TEST-CFG-007
+    /// Title: Test Config CLI parsing - log level
+    ///
+    /// Description: VRConnect shall parse log level from CLI arguments.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_config_parse_log_level() {
+        let config = Config::parse_from(vec!["vrconnect", "--log-level", "debug"]);
+        assert_eq!(config.log_level, "debug");
+    }
+
+    /// ID SRS: SRS-TEST-CFG-008
+    /// Title: Test Config CLI parsing - log directory
+    ///
+    /// Description: VRConnect shall parse log directory path from CLI arguments.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_config_parse_log_dir() {
+        let config = Config::parse_from(vec!["vrconnect", "--log-dir", "/var/log/vrconnect"]);
+        assert_eq!(config.log_dir, "/var/log/vrconnect");
+    }
+
+    /// ID SRS: SRS-TEST-CFG-009
+    /// Title: Test Config CLI parsing - debug mode
+    ///
+    /// Description: VRConnect shall parse debug mode flag from CLI arguments.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_config_parse_debug_mode() {
+        let config = Config::parse_from(vec!["vrconnect", "--debug-enabled"]);
+        assert!(config.debug_enabled);
+    }
+
+    /// ID SRS: SRS-TEST-CFG-010
+    /// Title: Test Config CLI parsing - multiple arguments
+    ///
+    /// Description: VRConnect shall correctly parse multiple CLI arguments
+    /// simultaneously.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_config_parse_multiple_args() {
+        let config = Config::parse_from(vec![
+            "vrconnect",
+            "--socketio-port",
+            "5000",
+            "--socketio-host",
+            "0.0.0.0",
+            "--output-console-verbose",
+            "--output-ble-device-name",
+            "TestDevice",
+            "--log-level",
+            "debug",
+        ]);
+
+        assert_eq!(config.socketio_port, 5000);
+        assert_eq!(config.socketio_host, "0.0.0.0");
+        assert!(config.output_console_verbose);
+        assert_eq!(config.output_ble_device_name, "TestDevice");
+        assert_eq!(config.log_level, "debug");
+    }
+
+    /// ID SRS: SRS-TEST-CFG-011
+    /// Title: Test Config validation - valid configuration
+    ///
+    /// Description: VRConnect shall validate configuration parameters and
+    /// return Ok for valid configurations.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_config_validate_success() {
+        let config = Config::parse_from(vec!["vrconnect"]);
+        assert!(config.validate().is_ok());
+    }
+
+    /// ID SRS: SRS-TEST-CFG-012
+    /// Title: Test Config validation - invalid port
+    ///
+    /// Description: VRConnect shall reject port values outside valid range.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_config_validate_invalid_port() {
+        let config = Config::parse_from(vec!["vrconnect", "--socketio-port", "0"]);
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("port"));
+    }
+
+    /// ID SRS: SRS-TEST-CFG-013
+    /// Title: Test Config display
+    ///
+    /// Description: VRConnect shall implement Debug trait for Config
+    /// to display configuration values.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_config_debug_display() {
+        let config = Config::parse_from(vec!["vrconnect"]);
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("Config"));
     }
 }

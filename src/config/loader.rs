@@ -20,14 +20,12 @@ use std::path::Path;
 /// Result containing loaded Config or error
 pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Config, String> {
     // Load .env file
-    dotenvy::from_path(path.as_ref())
-        .map_err(|e| format!("Failed to load config file: {}", e))?;
+    dotenvy::from_path(path.as_ref()).map_err(|e| format!("Failed to load config file: {}", e))?;
 
     // Build config from environment variables
     let config = Config {
         config_file: None,
-        socketio_host: std::env::var("SOCKETIO_HOST")
-            .unwrap_or_else(|_| "127.0.0.1".to_string()),
+        socketio_host: std::env::var("SOCKETIO_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
         socketio_port: std::env::var("SOCKETIO_PORT")
             .unwrap_or_else(|_| "3000".to_string())
             .parse()
@@ -58,10 +56,8 @@ pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Config, String> {
             .unwrap_or(false),
         debug_output_path: std::env::var("DEBUG_OUTPUT_PATH")
             .unwrap_or_else(|_| "./logs/debug.log".to_string()),
-        log_level: std::env::var("LOG_LEVEL")
-            .unwrap_or_else(|_| "INFO".to_string()),
-        log_dir: std::env::var("LOG_DIR")
-            .unwrap_or_else(|_| "./logs".to_string()),
+        log_level: std::env::var("LOG_LEVEL").unwrap_or_else(|_| "INFO".to_string()),
+        log_dir: std::env::var("LOG_DIR").unwrap_or_else(|_| "./logs".to_string()),
     };
 
     Ok(config)

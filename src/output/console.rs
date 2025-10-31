@@ -32,7 +32,7 @@ impl ConsoleOutput {
     /// # Returns
     /// New ConsoleOutput instance
     pub fn new(verbose: bool, colorized: bool) -> Self {
-        Self { 
+        Self {
             verbose,
             _colorized: colorized,
         }
@@ -111,11 +111,7 @@ impl ConsoleOutput {
         println!("Total Tracks: {}", data.all_tracks.len());
 
         for room in &data.rooms {
-            println!(
-                "\nRoom: {} (Index: {})",
-                room.room_name,
-                room.room_index
-            );
+            println!("\nRoom: {} (Index: {})", room.room_name, room.room_index);
 
             for track in &room.tracks {
                 self.print_track_verbose(track, "  ");
@@ -176,10 +172,10 @@ impl ConsoleOutput {
             if let Some(points) = &track.waveform_points {
                 println!("{}  Waveform Points ({} total):", indent, points.len());
                 print!("{}    ", indent);
-                
+
                 for (i, point) in points.iter().enumerate() {
                     print!("{:.3}", point);
-                    
+
                     // Format: 10 points per line
                     if (i + 1) % 10 == 0 && i + 1 < points.len() {
                         println!();
@@ -196,35 +192,332 @@ impl ConsoleOutput {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
+	use crate::domain::{ProcessedData, ProcessedRoom, ProcessedTrack, TrackType, WaveformStats};
+	use chrono::Utc;
 
-    #[test]
-    fn test_console_output_creation() {
-        // TODO: Implement console creation test
-        assert!(true);
-    }
+	/// ID SRS: SRS-TEST-CONSOLE-001
+	/// Title: Test console output creation
+	/// 
+	/// Description: VRConnect shall create ConsoleOutput with
+	/// specified verbosity and colorization settings.
+	/// 
+	/// Version: V1.0
+	#[test]
+	fn test_console_output_new() {
+		let console = ConsoleOutput::new(false, false);
+		assert!(true); // Just verify it can be created
+		
+		let _console_verbose = ConsoleOutput::new(true, true);
+		assert!(true);
+	}
 
-    #[test]
-    fn test_compact_output() {
-        // TODO: Implement compact output test
-        assert!(true);
-    }
+	/// ID SRS: SRS-TEST-CONSOLE-002
+	/// Title: Test compact output format
+	/// 
+	/// Description: VRConnect shall output compact format when verbose=false,
+	/// showing summary of tracks.
+	/// 
+	/// Version: V1.0
+	#[test]
+	fn test_compact_output() {
+		let console = ConsoleOutput::new(false, false);
+		
+		let track = ProcessedTrack {
+			name: "HR".to_string(),
+			display_value: "75.000".to_string(),
+			raw_value: Some(75.0),
+			unit: "bpm".to_string(),
+			timestamp: Utc::now(),
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			track_index: 0,
+			record_index: 0,
+			track_type: TrackType::Number,
+			waveform_stats: None,
+			waveform_points: None,
+		};
+		
+		let room = ProcessedRoom {
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			tracks: vec![track.clone()],
+		};
+		
+		let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+		
+		// Should not panic
+		tokio_test::block_on(console.output(&data));
+	}
 
-    #[test]
-    fn test_verbose_output() {
-        // TODO: Implement verbose output test
-        assert!(true);
-    }
+	/// ID SRS: SRS-TEST-CONSOLE-003
+	/// Title: Test verbose output format
+	/// 
+	/// Description: VRConnect shall output detailed format when verbose=true,
+	/// showing all track details.
+	/// 
+	/// Version: V1.0
+	#[test]
+	fn test_verbose_output() {
+		let console = ConsoleOutput::new(true, false);
+		
+		let track = ProcessedTrack {
+			name: "HR".to_string(),
+			display_value: "75.000".to_string(),
+			raw_value: Some(75.0),
+			unit: "bpm".to_string(),
+			timestamp: Utc::now(),
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			track_index: 0,
+			record_index: 0,
+			track_type: TrackType::Number,
+			waveform_stats: None,
+			waveform_points: None,
+		};
+		
+		let room = ProcessedRoom {
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			tracks: vec![track.clone()],
+		};
+		
+		let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+		
+		// Should not panic
+		tokio_test::block_on(console.output(&data));
+	}
 
-    #[test]
-    fn test_track_formatting() {
-        // TODO: Implement track formatting test
-        assert!(true);
-    }
+	/// ID SRS: SRS-TEST-CONSOLE-004
+	/// Title: Test colorized output
+	/// 
+	/// Description: VRConnect shall support colorized output when colorized=true.
+	/// 
+	/// Version: V1.0
+	#[test]
+	fn test_colorized_output() {
+		let console = ConsoleOutput::new(false, true);
+		
+		let track = ProcessedTrack {
+			name: "SpO2".to_string(),
+			display_value: "98.000".to_string(),
+			raw_value: Some(98.0),
+			unit: "%".to_string(),
+			timestamp: Utc::now(),
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			track_index: 0,
+			record_index: 0,
+			track_type: TrackType::Number,
+			waveform_stats: None,
+			waveform_points: None,
+		};
+		
+		let room = ProcessedRoom {
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			tracks: vec![track.clone()],
+		};
+		
+		let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+		
+		// Should not panic
+		tokio_test::block_on(console.output(&data));
+	}
 
-    #[test]
-    fn test_waveform_points_output() {
-        // TODO: Implement waveform points console output test
-        assert!(true);
-    }
+	/// ID SRS: SRS-TEST-CONSOLE-005
+	/// Title: Test waveform output in verbose mode
+	/// 
+	/// Description: VRConnect shall show waveform points in verbose mode.
+	/// 
+	/// Version: V1.0
+	#[test]
+	fn test_waveform_output_verbose() {
+		let console = ConsoleOutput::new(true, false);
+		
+		let stats = WaveformStats {
+			min: 1.0,
+			max: 5.0,
+			avg: 3.0,
+			count: 5,
+		};
+		
+		let track = ProcessedTrack {
+			name: "ECG".to_string(),
+			display_value: "5 points (1.000 to 5.000, avg: 3.000)".to_string(),
+			raw_value: None,
+			unit: "mV".to_string(),
+			timestamp: Utc::now(),
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			track_index: 0,
+			record_index: 0,
+			track_type: TrackType::Waveform,
+			waveform_stats: Some(stats),
+			waveform_points: Some(vec![1.0, 2.0, 3.0, 4.0, 5.0]),
+		};
+		
+		let room = ProcessedRoom {
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			tracks: vec![track.clone()],
+		};
+		
+		let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+		
+		// Should not panic
+		tokio_test::block_on(console.output(&data));
+	}
+
+	/// ID SRS: SRS-TEST-CONSOLE-006
+	/// Title: Test multiple rooms output
+	/// 
+	/// Description: VRConnect shall output all rooms and their tracks.
+	/// 
+	/// Version: V1.0
+	#[test]
+	fn test_multiple_rooms_output() {
+		let console = ConsoleOutput::new(true, false);
+		
+		let track1 = ProcessedTrack {
+			name: "HR".to_string(),
+			display_value: "75.000".to_string(),
+			raw_value: Some(75.0),
+			unit: "bpm".to_string(),
+			timestamp: Utc::now(),
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			track_index: 0,
+			record_index: 0,
+			track_type: TrackType::Number,
+			waveform_stats: None,
+			waveform_points: None,
+		};
+		
+		let track2 = ProcessedTrack {
+			name: "SpO2".to_string(),
+			display_value: "98.000".to_string(),
+			raw_value: Some(98.0),
+			unit: "%".to_string(),
+			timestamp: Utc::now(),
+			room_index: 1,
+			room_name: "BED_02".to_string(),
+			track_index: 0,
+			record_index: 0,
+			track_type: TrackType::Number,
+			waveform_stats: None,
+			waveform_points: None,
+		};
+		
+		let room1 = ProcessedRoom {
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			tracks: vec![track1],
+		};
+		
+		let room2 = ProcessedRoom {
+			room_index: 1,
+			room_name: "BED_02".to_string(),
+			tracks: vec![track2],
+		};
+		
+		let data = ProcessedData::new("VR-TEST".to_string(), vec![room1, room2]);
+		
+		// Should not panic
+		tokio_test::block_on(console.output(&data));
+	}
+
+	/// ID SRS: SRS-TEST-CONSOLE-007
+	/// Title: Test empty data output
+	/// 
+	/// Description: VRConnect shall handle empty ProcessedData gracefully.
+	/// 
+	/// Version: V1.0
+	#[test]
+	fn test_empty_data_output() {
+		let console = ConsoleOutput::new(false, false);
+		let data = ProcessedData::new("VR-EMPTY".to_string(), vec![]);
+		
+		// Should not panic
+		tokio_test::block_on(console.output(&data));
+	}
+
+	/// ID SRS: SRS-TEST-CONSOLE-008
+	/// Title: Test string track output
+	/// 
+	/// Description: VRConnect shall output string-type tracks correctly.
+	/// 
+	/// Version: V1.0
+	#[test]
+	fn test_string_track_output() {
+		let console = ConsoleOutput::new(true, false);
+		
+		let track = ProcessedTrack {
+			name: "ALARM".to_string(),
+			display_value: "HR High".to_string(),
+			raw_value: None,
+			unit: "".to_string(),
+			timestamp: Utc::now(),
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			track_index: 0,
+			record_index: 0,
+			track_type: TrackType::String,
+			waveform_stats: None,
+			waveform_points: None,
+		};
+		
+		let room = ProcessedRoom {
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			tracks: vec![track],
+		};
+		
+		let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+		
+		// Should not panic
+		tokio_test::block_on(console.output(&data));
+	}
+
+	/// ID SRS: SRS-TEST-CONSOLE-009
+	/// Title: Test compact mode with many tracks
+	/// 
+	/// Description: VRConnect shall show first 5 tracks and indicate
+	/// remaining count in compact mode.
+	/// 
+	/// Version: V1.0
+	#[test]
+	fn test_compact_mode_many_tracks() {
+		let console = ConsoleOutput::new(false, false);
+		
+		// Create 10 tracks
+		let mut tracks = Vec::new();
+		for i in 0..10 {
+			tracks.push(ProcessedTrack {
+				name: format!("TRACK_{}", i),
+				display_value: format!("{}.000", i),
+				raw_value: Some(i as f64),
+				unit: "unit".to_string(),
+				timestamp: Utc::now(),
+				room_index: 0,
+				room_name: "BED_01".to_string(),
+				track_index: i,
+				record_index: 0,
+				track_type: TrackType::Number,
+				waveform_stats: None,
+				waveform_points: None,
+			});
+		}
+		
+		let room = ProcessedRoom {
+			room_index: 0,
+			room_name: "BED_01".to_string(),
+			tracks: tracks.clone(),
+		};
+		
+		let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+		
+		// Should not panic and show "... and 5 more tracks"
+		tokio_test::block_on(console.output(&data));
+	}
 }

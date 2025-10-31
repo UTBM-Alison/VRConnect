@@ -51,7 +51,7 @@ impl Logger {
 
         // Set as global logger
         let level_filter = Self::parse_level(&config.log_level)?;
-        
+
         log::set_boxed_logger(Box::new(logger))
             .map_err(|e| VitalError::Logger(format!("Failed to set logger: {}", e)))?;
 
@@ -81,7 +81,10 @@ impl Logger {
             "ERROR" => Ok(log::LevelFilter::Error),
             "DEBUG" => Ok(log::LevelFilter::Debug),
             "TRACE" => Ok(log::LevelFilter::Trace),
-            _ => Err(VitalError::Logger(format!("Invalid log level: {}", level_str))),
+            _ => Err(VitalError::Logger(format!(
+                "Invalid log level: {}",
+                level_str
+            ))),
         }
     }
 
@@ -112,7 +115,7 @@ impl Logger {
     /// * `record` - Log record to write
     fn write_log(&self, record: &log::Record) {
         let log_file = self.get_log_file_path();
-        
+
         // Update current file if date changed
         {
             let mut current = self.current_file.lock().unwrap();
@@ -127,11 +130,7 @@ impl Logger {
         let message = format!("[{}] [{}] {}\n", timestamp, level_str, record.args());
 
         // Write to file
-        if let Ok(mut file) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_file)
-        {
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_file) {
             let _ = file.write_all(message.as_bytes());
         }
     }
@@ -177,34 +176,252 @@ impl log::Log for Logger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
+    /// ID SRS: SRS-TEST-LOG-001
+    /// Title: Test valid log level parsing
+    ///
+    /// Description: VRConnect shall correctly parse valid log level strings
+    /// (SUCCESS, INFO, WARNING, ERROR, DEBUG, TRACE) into LevelFilter.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_parse_level_valid() {
-        // TODO: Implement valid level parsing tests
-        assert!(true);
+        assert_eq!(
+            Logger::parse_level("SUCCESS").unwrap(),
+            log::LevelFilter::Info
+        );
+        assert_eq!(Logger::parse_level("INFO").unwrap(), log::LevelFilter::Info);
+        assert_eq!(
+            Logger::parse_level("WARNING").unwrap(),
+            log::LevelFilter::Warn
+        );
+        assert_eq!(
+            Logger::parse_level("ERROR").unwrap(),
+            log::LevelFilter::Error
+        );
+        assert_eq!(
+            Logger::parse_level("DEBUG").unwrap(),
+            log::LevelFilter::Debug
+        );
+        assert_eq!(
+            Logger::parse_level("TRACE").unwrap(),
+            log::LevelFilter::Trace
+        );
+
+        // Test case insensitivity
+        assert_eq!(Logger::parse_level("info").unwrap(), log::LevelFilter::Info);
+        assert_eq!(
+            Logger::parse_level("WaRnInG").unwrap(),
+            log::LevelFilter::Warn
+        );
     }
 
+    /// ID SRS: SRS-TEST-LOG-002
+    /// Title: Test invalid log level parsing
+    ///
+    /// Description: VRConnect shall return an error when parsing invalid
+    /// log level strings.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_parse_level_invalid() {
-        // TODO: Implement invalid level parsing test
-        assert!(true);
+        assert!(Logger::parse_level("INVALID").is_err());
+        assert!(Logger::parse_level("").is_err());
+        assert!(Logger::parse_level("123").is_err());
+        assert!(Logger::parse_level("CRITICAL").is_err());
     }
 
+    /// ID SRS: SRS-TEST-LOG-003
+    /// Title: Test log file path generation
+    ///
+    /// Description: VRConnect shall generate log file paths with format
+    /// vrconnect-YYYY-MM-DD.log based on current date.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_log_file_path_generation() {
-        // TODO: Implement log file path generation test
-        assert!(true);
+        let temp_dir = TempDir::new().unwrap();
+        let logger = Logger {
+            log_dir: temp_dir.path().to_path_buf(),
+            current_file: Mutex::new(None),
+        };
+
+        let log_path = logger.get_log_file_path();
+        let filename = log_path.file_name().unwrap().to_str().unwrap();
+
+        // Check format: vrconnect-YYYY-MM-DD.log
+        assert!(
+            filename.starts_with("vrconnect-"),
+            "Filename should start with 'vrconnect-': {}",
+            filename
+        );
+        assert!(
+            filename.ends_with(".log"),
+            "Filename should end with '.log': {}",
+            filename
+        );
+
+        // Remove prefix and suffix to get date part
+        let without_prefix = filename.strip_prefix("vrconnect-").unwrap();
+        let date_part = without_prefix.strip_suffix(".log").unwrap();
+
+        // Verify date format YYYY-MM-DD (should be 10 chars)
+        assert_eq!(
+            date_part.len(),
+            10,
+            "Date should be 10 characters (YYYY-MM-DD)"
+        );
+
+        // Split by dash and verify parts
+        let parts: Vec<&str> = date_part.split('-').collect();
+        assert_eq!(
+            parts.len(),
+            3,
+            "Date should have 3 parts separated by dashes"
+        );
+
+        assert_eq!(parts[0].len(), 4, "Year should be 4 digits");
+        assert_eq!(parts[1].len(), 2, "Month should be 2 digits");
+        assert_eq!(parts[2].len(), 2, "Day should be 2 digits");
+
+        // Verify all parts are numeric
+        assert!(
+            parts[0].chars().all(|c| c.is_numeric()),
+            "Year should be numeric: {}",
+            parts[0]
+        );
+        assert!(
+            parts[1].chars().all(|c| c.is_numeric()),
+            "Month should be numeric: {}",
+            parts[1]
+        );
+        assert!(
+            parts[2].chars().all(|c| c.is_numeric()),
+            "Day should be numeric: {}",
+            parts[2]
+        );
     }
 
+    /// ID SRS: SRS-TEST-LOG-004
+    /// Title: Test level formatting
+    ///
+    /// Description: VRConnect shall format log levels with consistent width
+    /// (7 characters) for aligned output.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_format_level() {
-        // TODO: Implement level formatting test
-        assert!(true);
+        let temp_dir = TempDir::new().unwrap();
+        let logger = Logger {
+            log_dir: temp_dir.path().to_path_buf(),
+            current_file: Mutex::new(None),
+        };
+
+        assert_eq!(logger.format_level(log::Level::Error), "ERROR  ");
+        assert_eq!(logger.format_level(log::Level::Warn), "WARNING");
+        assert_eq!(logger.format_level(log::Level::Info), "INFO   ");
+        assert_eq!(logger.format_level(log::Level::Debug), "DEBUG  ");
+        assert_eq!(logger.format_level(log::Level::Trace), "TRACE  ");
+
+        // Check consistent width (7 chars)
+        assert_eq!(logger.format_level(log::Level::Error).len(), 7);
+        assert_eq!(logger.format_level(log::Level::Info).len(), 7);
     }
 
+    /// ID SRS: SRS-TEST-LOG-005
+    /// Title: Test daily rotation mechanism
+    ///
+    /// Description: VRConnect shall update log file path when date changes,
+    /// ensuring logs are written to correct daily file.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_daily_rotation() {
-        // TODO: Implement daily rotation test
-        assert!(true);
+        let temp_dir = TempDir::new().unwrap();
+        let logger = Logger {
+            log_dir: temp_dir.path().to_path_buf(),
+            current_file: Mutex::new(None),
+        };
+
+        // First call - should set current file
+        let path1 = logger.get_log_file_path();
+        {
+            let mut current = logger.current_file.lock().unwrap();
+            *current = Some(path1.clone());
+        }
+
+        // Second call - same date, should return same path
+        let path2 = logger.get_log_file_path();
+        assert_eq!(path1, path2);
+
+        // Verify current_file is set
+        let current = logger.current_file.lock().unwrap();
+        assert!(current.is_some());
+        assert_eq!(current.as_ref().unwrap(), &path1);
+    }
+
+    /// ID SRS: SRS-TEST-LOG-006
+    /// Title: Test log file creation
+    ///
+    /// Description: VRConnect shall create log files when writing first entry.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_log_file_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = Logger {
+            log_dir: temp_dir.path().to_path_buf(),
+            current_file: Mutex::new(None),
+        };
+
+        let record = log::Record::builder()
+            .args(format_args!("Test message"))
+            .level(log::Level::Info)
+            .target("test")
+            .build();
+
+        logger.write_log(&record);
+
+        // Check file was created
+        let log_path = logger.get_log_file_path();
+        assert!(log_path.exists());
+
+        // Check content
+        let content = std::fs::read_to_string(log_path).unwrap();
+        assert!(content.contains("[INFO   ] Test message"));
+    }
+
+    /// ID SRS: SRS-TEST-LOG-007
+    /// Title: Test log entry format
+    ///
+    /// Description: VRConnect shall format log entries as:
+    /// [YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] Message
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_log_entry_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let logger = Logger {
+            log_dir: temp_dir.path().to_path_buf(),
+            current_file: Mutex::new(None),
+        };
+
+        let record = log::Record::builder()
+            .args(format_args!("Format test"))
+            .level(log::Level::Debug)
+            .target("test")
+            .build();
+
+        logger.write_log(&record);
+
+        let log_path = logger.get_log_file_path();
+        let content = std::fs::read_to_string(log_path).unwrap();
+
+        // Verify format: [timestamp] [level] message
+        assert!(content.contains("] [DEBUG  ] Format test"));
+
+        // Verify timestamp format (basic check)
+        assert!(content.starts_with("[20")); // Year starts with 20
     }
 }

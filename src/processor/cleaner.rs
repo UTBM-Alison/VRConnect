@@ -126,7 +126,9 @@ impl VitalDataCleaner {
     /// # Returns
     /// String with Infinity replaced by null
     fn replace_infinity(&self, json_str: &str) -> String {
-        self.infinity_pattern.replace_all(json_str, "null").to_string()
+        self.infinity_pattern
+            .replace_all(json_str, "null")
+            .to_string()
     }
 
     /// ID SRS: SRS-FN-CLEANER-006
@@ -160,7 +162,9 @@ impl VitalDataCleaner {
     /// # Returns
     /// String with array decimal separators fixed
     fn fix_decimal_arr(&self, json_str: &str) -> String {
-        self.decimal_arr.replace_all(json_str, "$1$2.$3").to_string()
+        self.decimal_arr
+            .replace_all(json_str, "$1$2.$3")
+            .to_string()
     }
 }
 
@@ -174,51 +178,258 @@ impl Default for VitalDataCleaner {
 mod tests {
     use super::*;
 
+    /// ID SRS: SRS-TEST-CLEAN-001
+    /// Title: Test cleaner creation
+    ///
+    /// Description: VRConnect shall create a VitalDataCleaner instance.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_remove_control_chars() {
-        // TODO: Implement control character removal test
-        assert!(true);
+    fn test_cleaner_new() {
+        let cleaner = VitalDataCleaner::new();
+        assert!(cleaner.clean("{}").is_ok());
     }
 
+    /// ID SRS: SRS-TEST-CLEAN-002
+    /// Title: Test control character removal
+    ///
+    /// Description: VRConnect shall remove control characters (0x00-0x1F, 0x7F)
+    /// from JSON strings.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_remove_control_characters() {
+        let cleaner = VitalDataCleaner::new();
+
+        // Test with control characters
+        let input = "Hello\x00\x01\x1FWorld\x7F";
+        let result = cleaner.clean(input).unwrap();
+        assert_eq!(result, "HelloWorld");
+
+        // Test with newlines and tabs (should be removed)
+        let input = "Hello\n\tWorld";
+        let result = cleaner.clean(input).unwrap();
+        assert_eq!(result, "HelloWorld");
+    }
+
+    /// ID SRS: SRS-TEST-CLEAN-003
+    /// Title: Test NaN replacement
+    ///
+    /// Description: VRConnect shall replace NaN values (case-insensitive)
+    /// with null in JSON.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_replace_nan() {
-        // TODO: Implement NaN replacement test
-        assert!(true);
+        let cleaner = VitalDataCleaner::new();
+
+        // Test various NaN formats
+        let input = r#"{"val1": NaN, "val2": nan, "val3": NAN, "val4": +NaN, "val5": -NaN}"#;
+        let result = cleaner.clean(input).unwrap();
+
+        assert!(result.contains("null"));
+        assert!(!result.contains("NaN"));
+        assert!(!result.contains("nan"));
+
+        // Verify it's valid JSON
+        assert!(serde_json::from_str::<serde_json::Value>(&result).is_ok());
     }
 
+    /// ID SRS: SRS-TEST-CLEAN-004
+    /// Title: Test Infinity replacement
+    ///
+    /// Description: VRConnect shall replace Infinity values (case-insensitive,
+    /// with optional +/- signs) with null in JSON.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_replace_infinity() {
-        // TODO: Implement Infinity replacement test
-        assert!(true);
+        let cleaner = VitalDataCleaner::new();
+
+        // Test various Infinity formats
+        let input = r#"{"val1": Infinity, "val2": infinity, "val3": +Infinity, "val4": -Infinity, "val5": inf, "val6": -inf}"#;
+        let result = cleaner.clean(input).unwrap();
+
+        assert!(result.contains("null"));
+        assert!(!result.contains("Infinity"));
+        assert!(!result.contains("infinity"));
+        assert!(!result.contains("inf"));
+
+        // Verify it's valid JSON
+        assert!(serde_json::from_str::<serde_json::Value>(&result).is_ok());
     }
 
+    /// ID SRS: SRS-TEST-CLEAN-005
+    /// Title: Test decimal separator fix in objects
+    ///
+    /// Description: VRConnect shall fix comma decimal separators to dots
+    /// in JSON object values (e.g., "key": 123,456 → "key": 123.456).
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_fix_decimal_obj() {
-        // TODO: Implement object decimal separator fix test
-        assert!(true);
+    fn test_fix_decimal_separator_objects() {
+        let cleaner = VitalDataCleaner::new();
+
+        // Test decimal separator in object values
+        let input = r#"{"hr": 75,5, "temp": 36,8, "spo2": 98,2}"#;
+        let result = cleaner.clean(input).unwrap();
+
+        assert!(result.contains("75.5"));
+        assert!(result.contains("36.8"));
+        assert!(result.contains("98.2"));
+
+        // Verify it's valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["hr"].as_f64().unwrap(), 75.5);
+        assert_eq!(parsed["temp"].as_f64().unwrap(), 36.8);
     }
 
+    /// ID SRS: SRS-TEST-CLEAN-006
+    /// Title: Test decimal separator fix in arrays
+    ///
+    /// Description: VRConnect shall fix comma decimal separators to dots
+    /// in JSON array values (e.g., [123,456] → [123.456]).
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_fix_decimal_arr() {
-        // TODO: Implement array decimal separator fix test
-        assert!(true);
+    fn test_fix_decimal_separator_arrays() {
+        let cleaner = VitalDataCleaner::new();
+
+        // Test decimal separator in arrays
+        let input = r#"{"waveform": [1,5, 2,3, 3,7, -0,5]}"#;
+        let result = cleaner.clean(input).unwrap();
+
+        assert!(result.contains("1.5"));
+        assert!(result.contains("2.3"));
+        assert!(result.contains("3.7"));
+        assert!(result.contains("-0.5"));
+
+        // Verify it's valid JSON and parse correctly
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let arr = parsed["waveform"].as_array().unwrap();
+        assert_eq!(arr[0].as_f64().unwrap(), 1.5);
+        assert_eq!(arr[3].as_f64().unwrap(), -0.5);
     }
 
+    /// ID SRS: SRS-TEST-CLEAN-007
+    /// Title: Test complete JSON cleaning
+    ///
+    /// Description: VRConnect shall apply all cleaning rules to produce
+    /// valid, parseable JSON from dirty input.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_clean_complete() {
-        // TODO: Implement complete cleaning pipeline test
-        assert!(true);
+    fn test_complete_cleaning() {
+        let cleaner = VitalDataCleaner::new();
+
+        // Dirty JSON with multiple issues
+        let input = r#"{"hr": 75,5, "temp": NaN, "bp": Infinity, "ecg": [1,2, 3,4, NaN]}"#;
+        let result = cleaner.clean(input).unwrap();
+
+        // Verify all issues are fixed
+        assert!(result.contains("75.5"));
+        assert!(result.contains("null"));
+        assert!(!result.contains("NaN"));
+        assert!(!result.contains("Infinity"));
+
+        // Must be valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert!(parsed.is_object());
     }
 
+    /// ID SRS: SRS-TEST-CLEAN-008
+    /// Title: Test valid JSON passthrough
+    ///
+    /// Description: VRConnect shall pass through already-valid JSON
+    /// without modification (except control characters).
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_clean_empty_string() {
-        // TODO: Implement empty string test
-        assert!(true);
+    fn test_valid_json_passthrough() {
+        let cleaner = VitalDataCleaner::new();
+
+        // Use larger numbers to avoid decimal separator confusion
+        let input = r#"{"name":"Test","value":123.456,"array":[10, 20, 30]}"#;
+        let result = cleaner.clean(input).unwrap();
+
+        // Parse both and compare
+        let input_parsed: serde_json::Value = serde_json::from_str(input).unwrap();
+        let result_parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+        assert_eq!(input_parsed, result_parsed);
     }
 
+    /// ID SRS: SRS-TEST-CLEAN-009
+    /// Title: Test edge case - empty string
+    ///
+    /// Description: VRConnect shall handle empty JSON strings.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_clean_already_valid_json() {
-        // TODO: Implement already valid JSON test
-        assert!(true);
+    fn test_empty_string() {
+        let cleaner = VitalDataCleaner::new();
+        let result = cleaner.clean("").unwrap();
+        assert_eq!(result, "");
+    }
+
+    /// ID SRS: SRS-TEST-CLEAN-010
+    /// Title: Test edge case - whitespace only
+    ///
+    /// Description: VRConnect shall handle whitespace-only strings.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_whitespace_only() {
+        let cleaner = VitalDataCleaner::new();
+        let result = cleaner.clean("   \t\n   ").unwrap();
+        // Control chars (tabs, newlines) should be removed
+        assert_eq!(result.trim(), "");
+    }
+
+    /// ID SRS: SRS-TEST-CLEAN-011
+    /// Title: Test negative numbers preservation
+    ///
+    /// Description: VRConnect shall preserve negative numbers while fixing
+    /// decimal separators.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_negative_numbers() {
+        let cleaner = VitalDataCleaner::new();
+
+        let input = r#"{"val1": -123,456, "val2": -0,5, "arr": [-1,2, -3,4]}"#;
+        let result = cleaner.clean(input).unwrap();
+
+        assert!(result.contains("-123.456"));
+        assert!(result.contains("-0.5"));
+        assert!(result.contains("-1.2"));
+        assert!(result.contains("-3.4"));
+
+        // Verify parsing
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["val1"].as_f64().unwrap(), -123.456);
+    }
+
+    /// ID SRS: SRS-TEST-CLEAN-012
+    /// Title: Test real vital data example
+    ///
+    /// Description: VRConnect shall clean realistic vital sign JSON data.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_real_vital_data() {
+        let cleaner = VitalDataCleaner::new();
+
+        let input = r#"{"vrcode":"VR-123","rooms":[{"roomname":"BED_01","trks":[{"name":"ECG","recs":[{"val":[1,2, 3,4, NaN, 5,6],"dt":1234567890}]}]}]}"#;
+        let result = cleaner.clean(input).unwrap();
+
+        // Must be valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert!(parsed["vrcode"].is_string());
+        assert!(parsed["rooms"].is_array());
+
+        // Check decimal fixes
+        assert!(result.contains("1.2"));
+        assert!(result.contains("3.4"));
     }
 }

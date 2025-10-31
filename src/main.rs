@@ -2,18 +2,9 @@
 // Module: main
 // Purpose: Application entry point with initialization and lifecycle management
 
-mod config;
-mod core;
-mod domain;
-mod error;
-mod input;
-mod output;
-mod processor;
-mod utils;
-
-use crate::config::Config;
-use crate::core::VitalProcessor;
-use crate::utils::logger::Logger;
+use vrconnect::config::Config;
+use vrconnect::core::VitalProcessor;
+use vrconnect::utils::logger::Logger;
 
 /// ID SRS: SRS-MAIN-001
 /// Title: main
@@ -66,28 +57,52 @@ fn print_banner(config: &Config) {
     println!("\n{}", "═".repeat(70));
     println!("  VRConnect - Medical Vital Data Middleware v1.0.0");
     println!("{}", "═".repeat(70));
-    println!("  Socket.IO Server: {}:{}", config.socketio_host, config.socketio_port);
-    println!("  Console Output:   {}", if config.output_console_enabled { "Enabled" } else { "Disabled" });
-    
+    println!(
+        "  Socket.IO Server: {}:{}",
+        config.socketio_host, config.socketio_port
+    );
+    println!(
+        "  Console Output:   {}",
+        if config.output_console_enabled {
+            "Enabled"
+        } else {
+            "Disabled"
+        }
+    );
+
     if config.output_console_enabled {
         println!("    └─ Verbose:     {}", config.output_console_verbose);
         println!("    └─ Colorized:   {}", config.output_console_colorized);
     }
-    
-    println!("  BLE Output:       {}", if config.output_ble_enabled { "Enabled" } else { "Disabled" });
-    
+
+    println!(
+        "  BLE Output:       {}",
+        if config.output_ble_enabled {
+            "Enabled"
+        } else {
+            "Disabled"
+        }
+    );
+
     if config.output_ble_enabled {
         println!("    └─ Device Name: {}", config.output_ble_device_name);
         println!("    └─ Service UUID: {}", config.output_ble_service_uuid);
         println!("    └─ ⚠️  Waveforms excluded (MTU limit)");
     }
-    
-    println!("  Debug Mode:       {}", if config.debug_enabled { "Enabled" } else { "Disabled" });
-    
+
+    println!(
+        "  Debug Mode:       {}",
+        if config.debug_enabled {
+            "Enabled"
+        } else {
+            "Disabled"
+        }
+    );
+
     if config.debug_enabled {
         println!("    └─ Output File: {}", config.debug_output_path);
     }
-    
+
     println!("  Log Level:        {}", config.log_level);
     println!("  Log Directory:    {}", config.log_dir);
     println!("{}", "═".repeat(70));

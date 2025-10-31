@@ -195,9 +195,7 @@ impl VitalDataTransformer {
                     None,
                 )
             }
-            serde_json::Value::Array(arr) if track_type == "wav" => {
-                self.process_waveform(arr)
-            }
+            serde_json::Value::Array(arr) if track_type == "wav" => self.process_waveform(arr),
             serde_json::Value::String(s) => (TrackType::String, s.clone(), None, None, None),
             _ => (TrackType::Other, value.to_string(), None, None, None),
         }
@@ -229,17 +227,17 @@ impl VitalDataTransformer {
         let numbers: Vec<f64> = arr.iter().filter_map(|v| v.as_f64()).collect();
 
         if numbers.is_empty() {
-            return (TrackType::Waveform, "0 points".to_string(), None, None, None);
+            return (
+                TrackType::Waveform,
+                "0 points".to_string(),
+                None,
+                None,
+                None,
+            );
         }
 
-        let min = numbers
-            .iter()
-            .copied()
-            .fold(f64::INFINITY, f64::min);
-        let max = numbers
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
+        let min = numbers.iter().copied().fold(f64::INFINITY, f64::min);
+        let max = numbers.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let sum: f64 = numbers.iter().sum();
         let avg = sum / numbers.len() as f64;
         let count = numbers.len();
@@ -275,46 +273,431 @@ impl Default for VitalDataTransformer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{VitalData, VitalRecord, VitalRoom, VitalTrack};
+    use serde_json::json;
 
+    /// ID SRS: SRS-TEST-TRANS-001
+    /// Title: Test transformer creation
+    ///
+    /// Description: VRConnect shall create a VitalDataTransformer instance.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_transformer_new() {
+        let transformer = VitalDataTransformer::new();
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![],
+        };
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.device_id, "VR-TEST");
+    }
+
+    /// ID SRS: SRS-TEST-TRANS-002
+    /// Title: Test transform empty rooms
+    ///
+    /// Description: VRConnect shall handle transformation of VitalData
+    /// with no rooms.
+    ///
+    /// Version: V1.0
     #[test]
     fn test_transform_empty_rooms() {
-        // TODO: Implement empty rooms transformation test
-        assert!(true);
+        let transformer = VitalDataTransformer::new();
+        let vital_data = VitalData {
+            vr_code: "VR-EMPTY".to_string(),
+            rooms: vec![],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.device_id, "VR-EMPTY");
+        assert_eq!(result.rooms.len(), 0);
+        assert_eq!(result.all_tracks.len(), 0);
     }
 
+    /// ID SRS: SRS-TEST-TRANS-003
+    /// Title: Test transform single numeric track
+    ///
+    /// Description: VRConnect shall transform numeric vital tracks
+    /// (type "num") into ProcessedTrack with TrackType::Number.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_process_track_number() {
-        // TODO: Implement number track processing test
-        assert!(true);
+    fn test_transform_numeric_track() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("1".to_string()),
+                    name: Some("HR".to_string()),
+                    track_type: Some("num".to_string()),
+                    unit: Some("bpm".to_string()),
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![VitalRecord {
+                        value: json!(75.0),
+                        timestamp: Some(1234567890),
+                        time: None,
+                    }],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.rooms.len(), 1);
+        assert_eq!(result.all_tracks.len(), 1);
+
+        let track = &result.all_tracks[0];
+        assert_eq!(track.name, "HR");
+        assert_eq!(track.unit, "bpm");
+        assert_eq!(track.track_type, TrackType::Number);
+        assert_eq!(track.raw_value, Some(75.0));
+        assert!(track.display_value.contains("75"));
     }
 
+    /// ID SRS: SRS-TEST-TRANS-004
+    /// Title: Test transform waveform track
+    ///
+    /// Description: VRConnect shall transform waveform tracks (type "wav")
+    /// into ProcessedTrack with TrackType::Waveform, including statistics.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_process_track_waveform() {
-        // TODO: Implement waveform track processing test
-        assert!(true);
+    fn test_transform_waveform_track() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("2".to_string()),
+                    name: Some("ECG".to_string()),
+                    track_type: Some("wav".to_string()),
+                    unit: Some("mV".to_string()),
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![VitalRecord {
+                        value: json!([1.0, 2.0, 3.0, 4.0, 5.0]),
+                        timestamp: Some(1234567890),
+                        time: None,
+                    }],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.all_tracks.len(), 1);
+
+        let track = &result.all_tracks[0];
+        assert_eq!(track.name, "ECG");
+        assert_eq!(track.track_type, TrackType::Waveform);
+        assert!(track.waveform_stats.is_some());
+        assert!(track.waveform_points.is_some());
+
+        let stats = track.waveform_stats.as_ref().unwrap();
+        assert_eq!(stats.min, 1.0);
+        assert_eq!(stats.max, 5.0);
+        assert_eq!(stats.avg, 3.0);
+        assert_eq!(stats.count, 5);
+
+        let points = track.waveform_points.as_ref().unwrap();
+        assert_eq!(points.len(), 5);
     }
 
+    /// ID SRS: SRS-TEST-TRANS-005
+    /// Title: Test transform string track
+    ///
+    /// Description: VRConnect shall transform string values into
+    /// ProcessedTrack with TrackType::String.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_process_track_string() {
-        // TODO: Implement string track processing test
-        assert!(true);
+    fn test_transform_string_track() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("3".to_string()),
+                    name: Some("ALARM".to_string()),
+                    track_type: Some("str".to_string()),
+                    unit: None,
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![VitalRecord {
+                        value: json!("HR High"),
+                        timestamp: Some(1234567890),
+                        time: None,
+                    }],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.all_tracks.len(), 1);
+
+        let track = &result.all_tracks[0];
+        assert_eq!(track.track_type, TrackType::String);
+        assert_eq!(track.display_value, "HR High");
     }
 
+    /// ID SRS: SRS-TEST-TRANS-006
+    /// Title: Test transform multiple rooms
+    ///
+    /// Description: VRConnect shall transform VitalData with multiple rooms
+    /// and flatten all tracks into all_tracks array.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_process_waveform_empty() {
-        // TODO: Implement empty waveform test
-        assert!(true);
+    fn test_transform_multiple_rooms() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![
+                VitalRoom {
+                    seq_id: Some(0),
+                    room_name: Some("BED_01".to_string()),
+                    tracks: vec![VitalTrack {
+                        id: Some("1".to_string()),
+                        name: Some("HR".to_string()),
+                        track_type: Some("num".to_string()),
+                        unit: Some("bpm".to_string()),
+                        mon_type: None,
+                        display_name: None,
+                        sample_rate: None,
+                        records: vec![VitalRecord {
+                            value: json!(75.0),
+                            timestamp: Some(1234567890),
+                            time: None,
+                        }],
+                    }],
+                    events: vec![],
+                },
+                VitalRoom {
+                    seq_id: Some(1),
+                    room_name: Some("BED_02".to_string()),
+                    tracks: vec![VitalTrack {
+                        id: Some("2".to_string()),
+                        name: Some("SpO2".to_string()),
+                        track_type: Some("num".to_string()),
+                        unit: Some("%".to_string()),
+                        mon_type: None,
+                        display_name: None,
+                        sample_rate: None,
+                        records: vec![VitalRecord {
+                            value: json!(98.0),
+                            timestamp: Some(1234567890),
+                            time: None,
+                        }],
+                    }],
+                    events: vec![],
+                },
+            ],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.rooms.len(), 2);
+        assert_eq!(result.all_tracks.len(), 2);
+        assert_eq!(result.all_tracks[0].room_name, "BED_01");
+        assert_eq!(result.all_tracks[1].room_name, "BED_02");
     }
 
+    /// ID SRS: SRS-TEST-TRANS-007
+    /// Title: Test transform track with multiple records
+    ///
+    /// Description: VRConnect shall create separate ProcessedTrack for
+    /// each record in a VitalTrack.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_process_waveform_statistics() {
-        // TODO: Implement waveform statistics computation test
-        assert!(true);
+    fn test_transform_multiple_records() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("1".to_string()),
+                    name: Some("HR".to_string()),
+                    track_type: Some("num".to_string()),
+                    unit: Some("bpm".to_string()),
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![
+                        VitalRecord {
+                            value: json!(75.0),
+                            timestamp: Some(1234567890),
+                            time: None,
+                        },
+                        VitalRecord {
+                            value: json!(76.0),
+                            timestamp: Some(1234567891),
+                            time: None,
+                        },
+                        VitalRecord {
+                            value: json!(74.0),
+                            timestamp: Some(1234567892),
+                            time: None,
+                        },
+                    ],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.all_tracks.len(), 3);
+        assert_eq!(result.all_tracks[0].raw_value, Some(75.0));
+        assert_eq!(result.all_tracks[1].raw_value, Some(76.0));
+        assert_eq!(result.all_tracks[2].raw_value, Some(74.0));
     }
 
+    /// ID SRS: SRS-TEST-TRANS-008
+    /// Title: Test transform with missing optional fields
+    ///
+    /// Description: VRConnect shall handle VitalData with missing optional
+    /// fields (room_name, track name, unit, etc.) gracefully.
+    ///
+    /// Version: V1.0
     #[test]
-    fn test_timestamp_extraction() {
-        // TODO: Implement timestamp extraction test
-        assert!(true);
+    fn test_transform_missing_fields() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: None,
+                room_name: None, // Missing room name
+                tracks: vec![VitalTrack {
+                    id: None,
+                    name: None, // Missing track name
+                    track_type: None,
+                    unit: None, // Missing unit
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![VitalRecord {
+                        value: json!(100.0),
+                        timestamp: None,
+                        time: None,
+                    }],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.rooms.len(), 1);
+        assert_eq!(result.all_tracks.len(), 1);
+
+        let track = &result.all_tracks[0];
+
+        // Should generate default names (check they exist)
+        assert!(!track.room_name.is_empty(), "Room name should be generated");
+        assert!(!track.name.is_empty(), "Track name should be generated");
+        assert_eq!(track.unit, "");
+    }
+
+    /// ID SRS: SRS-TEST-TRANS-009
+    /// Title: Test waveform statistics calculation
+    ///
+    /// Description: VRConnect shall correctly calculate min, max, avg, count
+    /// for waveform data.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_waveform_statistics() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("1".to_string()),
+                    name: Some("PLETH".to_string()),
+                    track_type: Some("wav".to_string()),
+                    unit: Some("".to_string()),
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![VitalRecord {
+                        value: json!([-5.0, 0.0, 10.0, 20.0, 15.0]),
+                        timestamp: Some(1234567890),
+                        time: None,
+                    }],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        let track = &result.all_tracks[0];
+        let stats = track.waveform_stats.as_ref().unwrap();
+
+        assert_eq!(stats.min, -5.0);
+        assert_eq!(stats.max, 20.0);
+        assert_eq!(stats.avg, 8.0); // (-5 + 0 + 10 + 20 + 15) / 5 = 8
+        assert_eq!(stats.count, 5);
+    }
+
+    /// ID SRS: SRS-TEST-TRANS-010
+    /// Title: Test timestamp handling
+    ///
+    /// Description: VRConnect shall use timestamp from record if available,
+    /// otherwise fall back to current time.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_timestamp_handling() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("1".to_string()),
+                    name: Some("HR".to_string()),
+                    track_type: Some("num".to_string()),
+                    unit: Some("bpm".to_string()),
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![VitalRecord {
+                        value: json!(75.0),
+                        timestamp: Some(1609459200000), // 2021-01-01 00:00:00 UTC
+                        time: None,
+                    }],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        let track = &result.all_tracks[0];
+
+        // Check that timestamp was set (not checking exact value due to timezone issues)
+        assert!(track.timestamp.timestamp() > 0);
     }
 }

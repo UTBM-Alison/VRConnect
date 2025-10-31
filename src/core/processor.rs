@@ -56,10 +56,7 @@ impl VitalProcessor {
             Arc::new(RwLock::new(None))
         };
 
-        Self {
-            config,
-            debug_file,
-        }
+        Self { config, debug_file }
     }
 
     /// ID SRS: SRS-FN-PROCESSOR-002
@@ -135,7 +132,7 @@ impl VitalProcessor {
         let debug_enabled = self.config.debug_enabled;
         let ble_output_clone = ble_output.clone();
         let console_output_clone = console_output.clone();
-        
+
         let processing_task = tokio::spawn(async move {
             while let Some(data) = rx.recv().await {
                 log::debug!("Processing data for device: {}", data.device_id);
@@ -238,7 +235,11 @@ impl VitalProcessor {
 
             // Process each room
             for room in &data.rooms {
-                let _ = writeln!(file, "\n[ROOM] {} (Index: {})", room.room_name, room.room_index);
+                let _ = writeln!(
+                    file,
+                    "\n[ROOM] {} (Index: {})",
+                    room.room_name, room.room_index
+                );
                 let _ = writeln!(file, "  Tracks in room: {}", room.tracks.len());
                 let _ = writeln!(file, "{}", "-".repeat(80));
 
@@ -247,7 +248,11 @@ impl VitalProcessor {
                     let _ = writeln!(file, "    Type: {:?}", track.track_type);
                     let _ = writeln!(file, "    Room: {}", track.room_name);
                     let _ = writeln!(file, "    Unit: {}", track.unit);
-                    let _ = writeln!(file, "    Timestamp: {}", track.timestamp.format("%H:%M:%S%.3f"));
+                    let _ = writeln!(
+                        file,
+                        "    Timestamp: {}",
+                        track.timestamp.format("%H:%M:%S%.3f")
+                    );
                     let _ = writeln!(file, "    Display Value: {}", track.display_value);
 
                     // Raw value for numbers
@@ -268,10 +273,10 @@ impl VitalProcessor {
                     if let Some(points) = &track.waveform_points {
                         let _ = writeln!(file, "    Waveform Points ({} total):", points.len());
                         let _ = write!(file, "      ");
-                        
+
                         for (i, point) in points.iter().enumerate() {
                             let _ = write!(file, "{:.6}", point);
-                            
+
                             // Formatting: 10 points per line
                             if (i + 1) % 10 == 0 && i + 1 < points.len() {
                                 let _ = writeln!(file);
@@ -288,7 +293,7 @@ impl VitalProcessor {
             let _ = writeln!(file, "\n{}", "=".repeat(80));
             let _ = writeln!(file, "END OF DATA DUMP");
             let _ = writeln!(file, "{}\n", "=".repeat(80));
-            
+
             // Flush to ensure data is written
             let _ = file.flush();
         }
