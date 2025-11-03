@@ -700,4 +700,211 @@ mod tests {
         // Check that timestamp was set (not checking exact value due to timezone issues)
         assert!(track.timestamp.timestamp() > 0);
     }
+
+    /// ID SRS: SRS-TEST-TRANS-011
+    /// Title: Test transformer default creation
+    ///
+    /// Description: VRConnect shall create VitalDataTransformer via Default trait.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_transformer_default() {
+        let transformer = VitalDataTransformer::default();
+
+        let vital_data = VitalData {
+            vr_code: "VR-DEFAULT".to_string(),
+            rooms: vec![],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.device_id, "VR-DEFAULT");
+    }
+
+    /// ID SRS: SRS-TEST-TRANS-012
+    /// Title: Test transform with Other track type
+    ///
+    /// Description: VRConnect shall handle unknown track types as TrackType::Other.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_transform_other_type() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("1".to_string()),
+                    name: Some("UNKNOWN".to_string()),
+                    track_type: Some("unknown_type".to_string()), // Not "num", "wav", or "str"
+                    unit: Some("unit".to_string()),
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![VitalRecord {
+                        value: json!({"complex": "object"}), // Complex object
+                        timestamp: Some(1234567890),
+                        time: None,
+                    }],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.all_tracks.len(), 1);
+
+        let track = &result.all_tracks[0];
+        assert_eq!(track.track_type, TrackType::Other);
+        assert!(track.display_value.contains("complex"));
+    }
+
+    /// ID SRS: SRS-TEST-TRANS-013
+    /// Title: Test transform empty waveform array
+    ///
+    /// Description: VRConnect shall handle waveform tracks with empty
+    /// point arrays, returning "0 points".
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_transform_empty_waveform() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("1".to_string()),
+                    name: Some("ECG".to_string()),
+                    track_type: Some("wav".to_string()),
+                    unit: Some("mV".to_string()),
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![VitalRecord {
+                        value: json!([]), // Empty array
+                        timestamp: Some(1234567890),
+                        time: None,
+                    }],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.all_tracks.len(), 1);
+
+        let track = &result.all_tracks[0];
+        assert_eq!(track.track_type, TrackType::Waveform);
+        assert_eq!(track.display_value, "0 points");
+        assert!(track.waveform_stats.is_none());
+        assert!(track.waveform_points.is_none());
+    }
+
+    /// ID SRS: SRS-TEST-TRANS-014
+    /// Title: Test transform with logging enabled
+    ///
+    /// Description: VRConnect shall log debug information during transformation
+    /// when debug logging is enabled.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_transform_with_debug_logging() {
+        // Set RUST_LOG to debug to enable debug logging
+        std::env::set_var("RUST_LOG", "debug");
+
+        // Initialize env_logger (ignore if already initialized)
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Debug)
+            .try_init();
+
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-LOG-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("1".to_string()),
+                    name: Some("HR".to_string()),
+                    track_type: Some("num".to_string()),
+                    unit: Some("bpm".to_string()),
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![
+                        VitalRecord {
+                            value: json!(75.0),
+                            timestamp: Some(1234567890),
+                            time: None,
+                        },
+                        VitalRecord {
+                            value: json!(76.0),
+                            timestamp: Some(1234567891),
+                            time: None,
+                        },
+                    ],
+                }],
+                events: vec![],
+            }],
+        };
+
+        // This should trigger the debug logging
+        let result = transformer.transform(vital_data);
+        assert_eq!(result.rooms.len(), 1);
+        assert_eq!(result.all_tracks.len(), 2); // 2 records
+
+        std::env::remove_var("RUST_LOG");
+    }
+
+    /// ID SRS: SRS-TEST-TRANS-015
+    /// Title: Test waveform with non-numeric values in array
+    ///
+    /// Description: VRConnect shall filter out non-numeric values from
+    /// waveform arrays.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_waveform_with_mixed_values() {
+        let transformer = VitalDataTransformer::new();
+
+        let vital_data = VitalData {
+            vr_code: "VR-TEST".to_string(),
+            rooms: vec![VitalRoom {
+                seq_id: Some(0),
+                room_name: Some("BED_01".to_string()),
+                tracks: vec![VitalTrack {
+                    id: Some("1".to_string()),
+                    name: Some("ECG".to_string()),
+                    track_type: Some("wav".to_string()),
+                    unit: Some("mV".to_string()),
+                    mon_type: None,
+                    display_name: None,
+                    sample_rate: None,
+                    records: vec![VitalRecord {
+                        value: json!([1.0, "invalid", 2.0, null, 3.0]),
+                        timestamp: Some(1234567890),
+                        time: None,
+                    }],
+                }],
+                events: vec![],
+            }],
+        };
+
+        let result = transformer.transform(vital_data);
+        let track = &result.all_tracks[0];
+
+        // Should only include numeric values (1.0, 2.0, 3.0)
+        let points = track.waveform_points.as_ref().unwrap();
+        assert_eq!(points.len(), 3);
+        assert_eq!(points[0], 1.0);
+        assert_eq!(points[1], 2.0);
+        assert_eq!(points[2], 3.0);
+    }
 }

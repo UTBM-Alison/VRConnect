@@ -350,4 +350,19 @@ mod tests {
         assert_eq!(result, original);
         assert_eq!(result.len(), 10240);
     }
+    /// ID SRS: SRS-TEST-DECOMP-011
+    /// Title: Test VitalDataDecompressor default creation
+    ///
+    /// Description: VRConnect shall create VitalDataDecompressor via Default trait.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_decompressor_default() {
+        let decompressor = VitalDataDecompressor::default();
+
+        // Verify it works the same as new()
+        let data = b"Hello, World!";
+        let result = decompressor.decompress(data).unwrap();
+        assert_eq!(result, data);
+    }
 }

@@ -432,4 +432,19 @@ mod tests {
         assert!(result.contains("1.2"));
         assert!(result.contains("3.4"));
     }
+    /// ID SRS: SRS-TEST-CLEAN-018
+    /// Title: Test VitalDataCleaner default creation
+    ///
+    /// Description: VRConnect shall create VitalDataCleaner via Default trait.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_cleaner_default() {
+        let cleaner = VitalDataCleaner::default();
+
+        // Verify it works the same as new()
+        let input = r#"{"val": NaN}"#;
+        let result = cleaner.clean(input).unwrap();
+        assert!(result.contains("null"));
+    }
 }
