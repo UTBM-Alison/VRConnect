@@ -79,6 +79,7 @@ impl SocketIOServer {
     ///
     /// # Returns
     /// Result indicating success or error
+    #[cfg(not(tarpaulin_include))] // Requires real TCP server, integration test only
     pub async fn start(&self, tx: mpsc::UnboundedSender<ProcessedData>) -> Result<()> {
         let addr = format!("{}:{}", self.host, self.port);
         let listener = TcpListener::bind(&addr)
@@ -148,6 +149,7 @@ impl SocketIOServer {
     ///
     /// # Returns
     /// Result indicating success or error
+    #[cfg(not(tarpaulin_include))] // Requires real WebSocket connection, integration test only
     async fn handle_connection(
         stream: TcpStream,
         addr: SocketAddr,
@@ -176,7 +178,9 @@ impl SocketIOServer {
         write
             .send(Message::Text(connection_response.clone()))
             .await
-            .map_err(|e| VitalError::SocketIo(format!("Failed to send connection response: {}", e)))?;
+            .map_err(|e| {
+                VitalError::SocketIo(format!("Failed to send connection response: {}", e))
+            })?;
 
         log::debug!("Sent connection response to {}", addr);
 
@@ -211,14 +215,16 @@ impl SocketIOServer {
                         write
                             .send(Message::Text("3".to_string()))
                             .await
-                            .map_err(|e| VitalError::SocketIo(format!("Failed to send pong: {}", e)))?;
+                            .map_err(|e| {
+                                VitalError::SocketIo(format!("Failed to send pong: {}", e))
+                            })?;
                     } else if text.starts_with("40") {
                         // Socket.IO connect
                         log::debug!("Socket.IO namespace connected: {}", addr);
                     } else if text.starts_with("42") {
                         // Socket.IO event
                         let event_data = &text[2..];
-                        
+
                         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(event_data) {
                             if let Some(arr) = parsed.as_array() {
                                 if let Some(event_name) = arr.get(0).and_then(|v| v.as_str()) {
@@ -235,12 +241,20 @@ impl SocketIOServer {
                     } else if text.starts_with("451-") {
                         // Binary event placeholder
                         let placeholder_data = &text[4..];
-                        log::debug!("Binary event placeholder from {}: {}", addr, placeholder_data);
+                        log::debug!(
+                            "Binary event placeholder from {}: {}",
+                            addr,
+                            placeholder_data
+                        );
                         pending_binary_event = Some(placeholder_data.to_string());
                     }
                 }
                 Ok(Message::Binary(data)) => {
-                    log::debug!("Received binary message from {}, length: {}", addr, data.len());
+                    log::debug!(
+                        "Received binary message from {}, length: {}",
+                        addr,
+                        data.len()
+                    );
 
                     // Debug log raw binary
                     if debug_enabled {
@@ -393,34 +407,398 @@ impl SocketIOServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::TrackType;
+    use std::io::Write as _;
+    use tempfile::NamedTempFile;
 
+    /// ID SRS: SRS-TEST-SOCKETIO-001
+    /// Title: Test SocketIOServer creation
+    /// 
+    /// Description: VRConnect shall create SocketIOServer with configuration.
+    /// 
+    /// Version: V1.0
     #[test]
     fn test_socketio_server_creation() {
-        // TODO: Implement server creation test
-        assert!(true);
+        let debug_file = Arc::new(RwLock::new(None));
+        
+        let server = SocketIOServer::new(
+            "127.0.0.1".to_string(),
+            3000,
+            false,
+            debug_file,
+        );
+        
+        assert_eq!(server.host, "127.0.0.1");
+        assert_eq!(server.port, 3000);
+        assert!(!server.debug_enabled);
     }
 
+    /// ID SRS: SRS-TEST-SOCKETIO-002
+    /// Title: Test SocketIOServer creation with debug enabled
+    /// 
+    /// Description: VRConnect shall create SocketIOServer with debug mode.
+    /// 
+    /// Version: V1.0
     #[test]
-    fn test_connection_handshake() {
-        // TODO: Implement handshake test
-        assert!(true);
+    fn test_socketio_server_creation_with_debug() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let file = temp_file.reopen().unwrap();
+        let debug_file = Arc::new(RwLock::new(Some(file)));
+        
+        let server = SocketIOServer::new(
+            "0.0.0.0".to_string(),
+            5000,
+            true,
+            debug_file,
+        );
+        
+        assert_eq!(server.host, "0.0.0.0");
+        assert_eq!(server.port, 5000);
+        assert!(server.debug_enabled);
     }
 
-    #[test]
-    fn test_ping_pong() {
-        // TODO: Implement ping/pong test
-        assert!(true);
+    /// ID SRS: SRS-TEST-SOCKETIO-003
+    /// Title: Test process_data without debug
+    /// 
+    /// Description: VRConnect shall process valid vital data without debug logging.
+    /// 
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_process_data_pipeline() {
+        let decompressor = VitalDataDecompressor::new();
+        let cleaner = VitalDataCleaner::new();
+        let transformer = VitalDataTransformer::new();
+        let debug_file = Arc::new(RwLock::new(None));
+
+        // Valid VitalData JSON
+        let json_data = r#"{
+            "vrcode": "VR-TEST",
+            "rooms": [{
+                "seqid": 0,
+                "roomname": "BED_01",
+                "trks": [{
+                    "id": "1",
+                    "name": "HR",
+                    "type": "num",
+                    "unit": "bpm",
+                    "recs": [{
+                        "val": 75,
+                        "dt": 1234567890
+                    }]
+                }],
+                "evts": []
+            }]
+        }"#;
+
+        let data = json_data.as_bytes();
+
+        let result = SocketIOServer::process_data(
+            data,
+            &decompressor,
+            &cleaner,
+            &transformer,
+            false,
+            &debug_file,
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let processed = result.unwrap();
+        assert_eq!(processed.device_id, "VR-TEST");
+        assert_eq!(processed.rooms.len(), 1);
     }
 
-    #[test]
-    fn test_binary_event_processing() {
-        // TODO: Implement binary event test
-        assert!(true);
+    /// ID SRS: SRS-TEST-SOCKETIO-004
+    /// Title: Test process_data with debug enabled
+    /// 
+    /// Description: VRConnect shall process data and write debug logs.
+    /// 
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_process_data_with_debug() {
+        let decompressor = VitalDataDecompressor::new();
+        let cleaner = VitalDataCleaner::new();
+        let transformer = VitalDataTransformer::new();
+        
+        let temp_file = NamedTempFile::new().unwrap();
+        let file = temp_file.reopen().unwrap();
+        let debug_file = Arc::new(RwLock::new(Some(file)));
+
+        let json_data = r#"{
+            "vrcode": "VR-DEBUG",
+            "rooms": [{
+                "seqid": 0,
+                "roomname": "BED_01",
+                "trks": [{
+                    "id": "1",
+                    "name": "SpO2",
+                    "type": "num",
+                    "unit": "%",
+                    "recs": [{
+                        "val": 98,
+                        "dt": 1234567890
+                    }]
+                }],
+                "evts": []
+            }]
+        }"#;
+
+        let data = json_data.as_bytes();
+
+        let result = SocketIOServer::process_data(
+            data,
+            &decompressor,
+            &cleaner,
+            &transformer,
+            true,
+            &debug_file,
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let processed = result.unwrap();
+        assert_eq!(processed.device_id, "VR-DEBUG");
+
+        // Verify debug file was written
+        drop(debug_file);
+        let mut file = temp_file.reopen().unwrap();
+        let mut contents = String::new();
+        std::io::Read::read_to_string(&mut file, &mut contents).unwrap();
+        
+        assert!(contents.contains("DECOMPRESSED DATA"));
+        assert!(contents.contains("RAW JSON"));
+        assert!(contents.contains("CLEANED JSON"));
+        assert!(contents.contains("TRANSFORMATION COMPLETE"));
     }
 
-    #[test]
-    fn test_process_data_pipeline() {
-        // TODO: Implement data processing pipeline test
-        assert!(true);
+    /// ID SRS: SRS-TEST-SOCKETIO-005
+    /// Title: Test process_data with compressed data
+    /// 
+    /// Description: VRConnect shall decompress zlib compressed data.
+    /// 
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_process_data_compressed() {
+        use flate2::write::ZlibEncoder;
+        use flate2::Compression;
+
+        let decompressor = VitalDataDecompressor::new();
+        let cleaner = VitalDataCleaner::new();
+        let transformer = VitalDataTransformer::new();
+        let debug_file = Arc::new(RwLock::new(None));
+
+        let json_data = r#"{"vrcode":"VR-COMPRESSED","rooms":[{"seqid":0,"roomname":"BED_01","trks":[{"id":"1","name":"HR","type":"num","unit":"bpm","recs":[{"val":80,"dt":1234567890}]}],"evts":[]}]}"#;
+
+        // Compress data
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(json_data.as_bytes()).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        let result = SocketIOServer::process_data(
+            &compressed,
+            &decompressor,
+            &cleaner,
+            &transformer,
+            false,
+            &debug_file,
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let processed = result.unwrap();
+        assert_eq!(processed.device_id, "VR-COMPRESSED");
+    }
+
+    /// ID SRS: SRS-TEST-SOCKETIO-006
+    /// Title: Test process_data with invalid UTF-8
+    /// 
+    /// Description: VRConnect shall return error for invalid UTF-8 data.
+    /// 
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_process_data_invalid_utf8() {
+        let decompressor = VitalDataDecompressor::new();
+        let cleaner = VitalDataCleaner::new();
+        let transformer = VitalDataTransformer::new();
+        let debug_file = Arc::new(RwLock::new(None));
+
+        // Invalid UTF-8 bytes
+        let invalid_data = vec![0xFF, 0xFE, 0xFD];
+
+        let result = SocketIOServer::process_data(
+            &invalid_data,
+            &decompressor,
+            &cleaner,
+            &transformer,
+            false,
+            &debug_file,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    /// ID SRS: SRS-TEST-SOCKETIO-007
+    /// Title: Test process_data with invalid JSON
+    /// 
+    /// Description: VRConnect shall return error for invalid JSON.
+    /// 
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_process_data_invalid_json() {
+        let decompressor = VitalDataDecompressor::new();
+        let cleaner = VitalDataCleaner::new();
+        let transformer = VitalDataTransformer::new();
+        let debug_file = Arc::new(RwLock::new(None));
+
+        let invalid_json = b"{ this is not valid json }";
+
+        let result = SocketIOServer::process_data(
+            invalid_json,
+            &decompressor,
+            &cleaner,
+            &transformer,
+            false,
+            &debug_file,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    /// ID SRS: SRS-TEST-SOCKETIO-008
+    /// Title: Test process_data with empty data
+    /// 
+    /// Description: VRConnect shall handle empty data gracefully.
+    /// 
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_process_data_empty() {
+        let decompressor = VitalDataDecompressor::new();
+        let cleaner = VitalDataCleaner::new();
+        let transformer = VitalDataTransformer::new();
+        let debug_file = Arc::new(RwLock::new(None));
+
+        let empty_data = b"";
+
+        let result = SocketIOServer::process_data(
+            empty_data,
+            &decompressor,
+            &cleaner,
+            &transformer,
+            false,
+            &debug_file,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    /// ID SRS: SRS-TEST-SOCKETIO-009
+    /// Title: Test process_data with waveform data
+    /// 
+    /// Description: VRConnect shall process waveform tracks correctly.
+    /// 
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_process_data_waveform() {
+        let decompressor = VitalDataDecompressor::new();
+        let cleaner = VitalDataCleaner::new();
+        let transformer = VitalDataTransformer::new();
+        let debug_file = Arc::new(RwLock::new(None));
+
+        let json_data = r#"{
+            "vrcode": "VR-WAVE",
+            "rooms": [{
+                "seqid": 0,
+                "roomname": "BED_01",
+                "trks": [{
+                    "id": "1",
+                    "name": "ECG",
+                    "type": "wav",
+                    "unit": "mV",
+                    "recs": [{
+                        "val": [0.1, 0.2, 0.3, 0.4, 0.5],
+                        "dt": 1234567890
+                    }]
+                }],
+                "evts": []
+            }]
+        }"#;
+
+        let result = SocketIOServer::process_data(
+            json_data.as_bytes(),
+            &decompressor,
+            &cleaner,
+            &transformer,
+            false,
+            &debug_file,
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let processed = result.unwrap();
+        assert_eq!(processed.all_tracks.len(), 1);
+        assert_eq!(processed.all_tracks[0].track_type, TrackType::Waveform);
+        assert!(processed.all_tracks[0].waveform_points.is_some());
+    }
+
+    /// ID SRS: SRS-TEST-SOCKETIO-010
+    /// Title: Test process_data with multiple rooms
+    /// 
+    /// Description: VRConnect shall process multiple rooms correctly.
+    /// 
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_process_data_multiple_rooms() {
+        let decompressor = VitalDataDecompressor::new();
+        let cleaner = VitalDataCleaner::new();
+        let transformer = VitalDataTransformer::new();
+        let debug_file = Arc::new(RwLock::new(None));
+
+        let json_data = r#"{
+            "vrcode": "VR-MULTI",
+            "rooms": [
+                {
+                    "seqid": 0,
+                    "roomname": "BED_01",
+                    "trks": [{
+                        "id": "1",
+                        "name": "HR",
+                        "type": "num",
+                        "unit": "bpm",
+                        "recs": [{"val": 75, "dt": 1234567890}]
+                    }],
+                    "evts": []
+                },
+                {
+                    "seqid": 1,
+                    "roomname": "BED_02",
+                    "trks": [{
+                        "id": "2",
+                        "name": "SpO2",
+                        "type": "num",
+                        "unit": "%",
+                        "recs": [{"val": 98, "dt": 1234567890}]
+                    }],
+                    "evts": []
+                }
+            ]
+        }"#;
+
+        let result = SocketIOServer::process_data(
+            json_data.as_bytes(),
+            &decompressor,
+            &cleaner,
+            &transformer,
+            false,
+            &debug_file,
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let processed = result.unwrap();
+        assert_eq!(processed.rooms.len(), 2);
+        assert_eq!(processed.all_tracks.len(), 2);
     }
 }

@@ -2,8 +2,8 @@
 // Module: output
 // Purpose: Output modules for console and BLE
 
-pub mod console;
 pub mod ble;
+pub mod console;
 
-pub use console::ConsoleOutput;
 pub use ble::BleOutput;
+pub use console::ConsoleOutput;
