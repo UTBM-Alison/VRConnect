@@ -347,40 +347,419 @@ impl BleOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{ProcessedData, ProcessedRoom, ProcessedTrack, TrackType, WaveformStats};
+    use chrono::Utc;
 
-    #[test]
-    fn test_ble_output_creation() {
-        // TODO: Implement BLE output creation test
-        assert!(true);
+    /// ID SRS: SRS-TEST-BLE-001
+    /// Title: Test BleOutput creation
+    ///
+    /// Description: VRConnect shall create BleOutput with device name and service UUID.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_ble_output_creation() {
+        let result = BleOutput::new(
+            "TestDevice".to_string(),
+            "12345678-1234-5678-1234-567812345678".to_string(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let ble = result.unwrap();
+        assert_eq!(ble.device_name, "TestDevice");
     }
 
-    #[test]
-    fn test_filter_non_waveform() {
-        // TODO: Implement non-waveform filtering test
-        assert!(true);
+    /// ID SRS: SRS-TEST-BLE-002
+    /// Title: Test BleOutput with invalid UUID
+    ///
+    /// Description: VRConnect shall return error for invalid service UUID.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_ble_output_invalid_uuid() {
+        let result = BleOutput::new("TestDevice".to_string(), "INVALID-UUID".to_string()).await;
+
+        assert!(result.is_err());
     }
 
-    #[test]
-    fn test_convert_track_number() {
-        // TODO: Implement number track conversion test
-        assert!(true);
+    /// ID SRS: SRS-TEST-BLE-003
+    /// Title: Test convert_track for number type
+    ///
+    /// Description: VRConnect shall convert Number track to BleTrack format.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_convert_track_number() {
+        let ble = BleOutput::new(
+            "Test".to_string(),
+            "12345678-1234-5678-1234-567812345678".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let track = ProcessedTrack {
+            name: "HR".to_string(),
+            display_value: "75.000".to_string(),
+            raw_value: Some(75.0),
+            unit: "bpm".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Number,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        let ble_track = ble.convert_track(&track);
+
+        assert_eq!(ble_track.name, "HR");
+        assert_eq!(ble_track.room, "BED_01");
+        assert_eq!(ble_track.track_type, "number");
+        assert_eq!(ble_track.unit, "bpm");
+
+        match ble_track.value {
+            BleValue::Number { value, display } => {
+                assert_eq!(value, 75.0);
+                assert_eq!(display, "75.000");
+            }
+            _ => panic!("Expected Number value"),
+        }
     }
 
-    #[test]
-    fn test_convert_track_string() {
-        // TODO: Implement string track conversion test
-        assert!(true);
+    /// ID SRS: SRS-TEST-BLE-004
+    /// Title: Test convert_track for string type
+    ///
+    /// Description: VRConnect shall convert String track to BleTrack format.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_convert_track_string() {
+        let ble = BleOutput::new(
+            "Test".to_string(),
+            "12345678-1234-5678-1234-567812345678".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let track = ProcessedTrack {
+            name: "ALARM".to_string(),
+            display_value: "HR High".to_string(),
+            raw_value: None,
+            unit: "".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::String,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        let ble_track = ble.convert_track(&track);
+
+        assert_eq!(ble_track.track_type, "string");
+
+        match ble_track.value {
+            BleValue::Text { value } => {
+                assert_eq!(value, "HR High");
+            }
+            _ => panic!("Expected Text value"),
+        }
     }
 
-    #[test]
-    fn test_payload_size_check() {
-        // TODO: Implement payload size validation test
-        assert!(true);
+    /// ID SRS: SRS-TEST-BLE-005
+    /// Title: Test filter non-waveform tracks
+    ///
+    /// Description: VRConnect shall output only non-waveform tracks via BLE.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_filter_non_waveform() {
+        let ble = BleOutput::new(
+            "Test".to_string(),
+            "12345678-1234-5678-1234-567812345678".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let room = ProcessedRoom {
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            tracks: vec![
+                ProcessedTrack {
+                    name: "HR".to_string(),
+                    display_value: "75.000".to_string(),
+                    raw_value: Some(75.0),
+                    unit: "bpm".to_string(),
+                    timestamp: Utc::now(),
+                    room_index: 0,
+                    room_name: "BED_01".to_string(),
+                    track_index: 0,
+                    record_index: 0,
+                    track_type: TrackType::Number,
+                    waveform_stats: None,
+                    waveform_points: None,
+                },
+                ProcessedTrack {
+                    name: "ECG".to_string(),
+                    display_value: "110 points".to_string(),
+                    raw_value: None,
+                    unit: "mV".to_string(),
+                    timestamp: Utc::now(),
+                    room_index: 0,
+                    room_name: "BED_01".to_string(),
+                    track_index: 1,
+                    record_index: 0,
+                    track_type: TrackType::Waveform,
+                    waveform_stats: Some(WaveformStats {
+                        min: -1.0,
+                        max: 1.0,
+                        avg: 0.0,
+                        count: 110,
+                    }),
+                    waveform_points: Some(vec![0.0; 110]),
+                },
+            ],
+        };
+
+        let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+
+        // Should succeed and filter out waveform
+        let result = ble.output(&data).await;
+        assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_json_serialization() {
-        // TODO: Implement JSON serialization test
-        assert!(true);
+    /// ID SRS: SRS-TEST-BLE-006
+    /// Title: Test JSON serialization
+    ///
+    /// Description: VRConnect shall serialize BleMessage to valid JSON.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_json_serialization() {
+        let ble = BleOutput::new(
+            "Test".to_string(),
+            "12345678-1234-5678-1234-567812345678".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let room = ProcessedRoom {
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            tracks: vec![ProcessedTrack {
+                name: "HR".to_string(),
+                display_value: "75.000".to_string(),
+                raw_value: Some(75.0),
+                unit: "bpm".to_string(),
+                timestamp: Utc::now(),
+                room_index: 0,
+                room_name: "BED_01".to_string(),
+                track_index: 0,
+                record_index: 0,
+                track_type: TrackType::Number,
+                waveform_stats: None,
+                waveform_points: None,
+            }],
+        };
+
+        let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+
+        // Output should create JSON in buffer
+        let result = ble.output(&data).await;
+        assert!(result.is_ok());
+
+        // Verify buffer has data
+        let buffer = ble.data_buffer.read().await;
+        assert!(buffer.is_some());
+
+        // Verify it's valid JSON
+        let json_bytes = buffer.as_ref().unwrap();
+        let json_str = String::from_utf8(json_bytes.clone()).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(parsed["version"], "1.0");
+        assert_eq!(parsed["device_id"], "VR-TEST");
+        assert_eq!(parsed["track_count"], 1);
+    }
+
+    /// ID SRS: SRS-TEST-BLE-007
+    /// Title: Test payload size check
+    ///
+    /// Description: VRConnect shall truncate payloads exceeding MAX_BLE_PAYLOAD.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_payload_size_check() {
+        let ble = BleOutput::new(
+            "Test".to_string(),
+            "12345678-1234-5678-1234-567812345678".to_string(),
+        )
+        .await
+        .unwrap();
+
+        // Create many tracks to exceed payload limit
+        let mut tracks = Vec::new();
+        for i in 0..100 {
+            tracks.push(ProcessedTrack {
+                name: format!("TRACK_{}", i),
+                display_value: "0".repeat(100), // Large value
+                raw_value: Some(i as f64),
+                unit: "unit".to_string(),
+                timestamp: Utc::now(),
+                room_index: 0,
+                room_name: "BED_01".to_string(),
+                track_index: i,
+                record_index: 0,
+                track_type: TrackType::String,
+                waveform_stats: None,
+                waveform_points: None,
+            });
+        }
+
+        let room = ProcessedRoom {
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            tracks,
+        };
+
+        let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+
+        let result = ble.output(&data).await;
+        assert!(result.is_ok());
+
+        // Verify payload was truncated
+        let buffer = ble.data_buffer.read().await;
+        assert!(buffer.is_some());
+        let size = buffer.as_ref().unwrap().len();
+        assert!(size <= MAX_BLE_PAYLOAD);
+    }
+    /// ID SRS: SRS-TEST-BLE-008
+    /// Title: Test output with empty non-waveform tracks
+    ///
+    /// Description: VRConnect shall return early when no non-waveform
+    /// tracks are present.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_output_empty_non_waveform() {
+        let ble = BleOutput::new(
+            "Test".to_string(),
+            "12345678-1234-5678-1234-567812345678".to_string(),
+        )
+        .await
+        .unwrap();
+
+        // Create data with only waveform tracks
+        let room = ProcessedRoom {
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            tracks: vec![ProcessedTrack {
+                name: "ECG".to_string(),
+                display_value: "110 points".to_string(),
+                raw_value: None,
+                unit: "mV".to_string(),
+                timestamp: Utc::now(),
+                room_index: 0,
+                room_name: "BED_01".to_string(),
+                track_index: 0,
+                record_index: 0,
+                track_type: TrackType::Waveform,
+                waveform_stats: None,
+                waveform_points: None,
+            }],
+        };
+
+        let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+
+        // Should succeed but not write to buffer
+        let result = ble.output(&data).await;
+        assert!(result.is_ok());
+
+        // Buffer should still be None (early return)
+        let buffer = ble.data_buffer.read().await;
+        assert!(buffer.is_none());
+    }
+
+    /// ID SRS: SRS-TEST-BLE-009
+    /// Title: Test convert_track for Other type
+    ///
+    /// Description: VRConnect shall convert Other track type to BleTrack.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_convert_track_other() {
+        let ble = BleOutput::new(
+            "Test".to_string(),
+            "12345678-1234-5678-1234-567812345678".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let track = ProcessedTrack {
+            name: "UNKNOWN".to_string(),
+            display_value: "Some value".to_string(),
+            raw_value: None,
+            unit: "".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Other,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        let ble_track = ble.convert_track(&track);
+
+        assert_eq!(ble_track.track_type, "other");
+
+        match ble_track.value {
+            BleValue::Other { value } => {
+                assert_eq!(value, "Some value");
+            }
+            _ => panic!("Expected Other value"),
+        }
+    }
+
+    /// ID SRS: SRS-TEST-BLE-010
+    /// Title: Test convert_track for Waveform type
+    ///
+    /// Description: VRConnect shall handle waveform track conversion
+    /// (though they should be filtered).
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_convert_track_waveform() {
+        let ble = BleOutput::new(
+            "Test".to_string(),
+            "12345678-1234-5678-1234-567812345678".to_string(),
+        )
+        .await
+        .unwrap();
+
+        let track = ProcessedTrack {
+            name: "ECG".to_string(),
+            display_value: "110 points".to_string(),
+            raw_value: None,
+            unit: "mV".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Waveform,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        let ble_track = ble.convert_track(&track);
+
+        // Should still convert even though it shouldn't normally happen
+        assert_eq!(ble_track.track_type, "waveform");
     }
 }

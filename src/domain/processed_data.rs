@@ -395,4 +395,205 @@ mod tests {
         assert_eq!(data.rooms.len(), 0);
         assert_eq!(data.all_tracks.len(), 0);
     }
+
+    /// ID SRS: SRS-TEST-PDATA-009
+    /// Title: Test get_non_waveform_tracks method
+    ///
+    /// Description: VRConnect shall filter and return only non-waveform tracks
+    /// from ProcessedData.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_get_non_waveform_tracks() {
+        let room = ProcessedRoom {
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            tracks: vec![
+                ProcessedTrack {
+                    name: "HR".to_string(),
+                    display_value: "75.000".to_string(),
+                    raw_value: Some(75.0),
+                    unit: "bpm".to_string(),
+                    timestamp: Utc::now(),
+                    room_index: 0,
+                    room_name: "BED_01".to_string(),
+                    track_index: 0,
+                    record_index: 0,
+                    track_type: TrackType::Number,
+                    waveform_stats: None,
+                    waveform_points: None,
+                },
+                ProcessedTrack {
+                    name: "ECG".to_string(),
+                    display_value: "110 points".to_string(),
+                    raw_value: None,
+                    unit: "mV".to_string(),
+                    timestamp: Utc::now(),
+                    room_index: 0,
+                    room_name: "BED_01".to_string(),
+                    track_index: 1,
+                    record_index: 0,
+                    track_type: TrackType::Waveform,
+                    waveform_stats: Some(WaveformStats {
+                        min: -1.0,
+                        max: 1.0,
+                        avg: 0.0,
+                        count: 110,
+                    }),
+                    waveform_points: Some(vec![0.0; 110]),
+                },
+                ProcessedTrack {
+                    name: "SpO2".to_string(),
+                    display_value: "98.000".to_string(),
+                    raw_value: Some(98.0),
+                    unit: "%".to_string(),
+                    timestamp: Utc::now(),
+                    room_index: 0,
+                    room_name: "BED_01".to_string(),
+                    track_index: 2,
+                    record_index: 0,
+                    track_type: TrackType::Number,
+                    waveform_stats: None,
+                    waveform_points: None,
+                },
+            ],
+        };
+
+        let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+
+        let non_waveforms = data.get_non_waveform_tracks();
+
+        // Should return only HR and SpO2, not ECG
+        assert_eq!(non_waveforms.len(), 2);
+        assert_eq!(non_waveforms[0].name, "HR");
+        assert_eq!(non_waveforms[1].name, "SpO2");
+
+        // Verify all are non-waveform
+        for track in non_waveforms {
+            assert_ne!(track.track_type, TrackType::Waveform);
+        }
+    }
+
+    /// ID SRS: SRS-TEST-PDATA-010
+    /// Title: Test get_non_waveform_tracks with empty data
+    ///
+    /// Description: VRConnect shall return empty vector when no tracks exist.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_get_non_waveform_tracks_empty() {
+        let data = ProcessedData::new("VR-EMPTY".to_string(), vec![]);
+        let non_waveforms = data.get_non_waveform_tracks();
+        assert_eq!(non_waveforms.len(), 0);
+    }
+
+    /// ID SRS: SRS-TEST-PDATA-011
+    /// Title: Test get_non_waveform_tracks with only waveforms
+    ///
+    /// Description: VRConnect shall return empty vector when all tracks
+    /// are waveforms.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_get_non_waveform_tracks_only_waveforms() {
+        let room = ProcessedRoom {
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            tracks: vec![
+                ProcessedTrack {
+                    name: "ECG".to_string(),
+                    display_value: "110 points".to_string(),
+                    raw_value: None,
+                    unit: "mV".to_string(),
+                    timestamp: Utc::now(),
+                    room_index: 0,
+                    room_name: "BED_01".to_string(),
+                    track_index: 0,
+                    record_index: 0,
+                    track_type: TrackType::Waveform,
+                    waveform_stats: None,
+                    waveform_points: None,
+                },
+                ProcessedTrack {
+                    name: "PLETH".to_string(),
+                    display_value: "110 points".to_string(),
+                    raw_value: None,
+                    unit: "".to_string(),
+                    timestamp: Utc::now(),
+                    room_index: 0,
+                    room_name: "BED_01".to_string(),
+                    track_index: 1,
+                    record_index: 0,
+                    track_type: TrackType::Waveform,
+                    waveform_stats: None,
+                    waveform_points: None,
+                },
+            ],
+        };
+
+        let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+        let non_waveforms = data.get_non_waveform_tracks();
+
+        assert_eq!(non_waveforms.len(), 0);
+    }
+
+    /// ID SRS: SRS-TEST-PDATA-012
+    /// Title: Test ProcessedTrack is_waveform method
+    ///
+    /// Description: VRConnect shall correctly identify waveform tracks.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_track_is_waveform() {
+        let waveform_track = ProcessedTrack {
+            name: "ECG".to_string(),
+            display_value: "110 points".to_string(),
+            raw_value: None,
+            unit: "mV".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Waveform,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        assert!(waveform_track.is_waveform());
+
+        let number_track = ProcessedTrack {
+            name: "HR".to_string(),
+            display_value: "75.000".to_string(),
+            raw_value: Some(75.0),
+            unit: "bpm".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::Number,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        assert!(!number_track.is_waveform());
+
+        let string_track = ProcessedTrack {
+            name: "ALARM".to_string(),
+            display_value: "HR High".to_string(),
+            raw_value: None,
+            unit: "".to_string(),
+            timestamp: Utc::now(),
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            track_index: 0,
+            record_index: 0,
+            track_type: TrackType::String,
+            waveform_stats: None,
+            waveform_points: None,
+        };
+
+        assert!(!string_track.is_waveform());
+    }
 }
