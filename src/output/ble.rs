@@ -484,10 +484,7 @@ mod tests {
 
         // Characteristic UUID should be service UUID + 1
         assert_ne!(char_uuid, ble.service_uuid);
-        assert_eq!(
-            char_uuid.as_u128(),
-            ble.service_uuid.as_u128() + 1
-        );
+        assert_eq!(char_uuid.as_u128(), ble.service_uuid.as_u128() + 1);
     }
 
     /// ID SRS: SRS-TEST-BLE-004
@@ -1003,4 +1000,3 @@ mod tests {
         assert!(buffer.is_none());
     }
 }
-
