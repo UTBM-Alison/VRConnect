@@ -114,17 +114,176 @@ impl Config {
     /// # Returns
     /// Parsed and validated configuration
     pub fn parse() -> Self {
-        let mut config = <Config as Parser>::parse();
-
-        // If config file specified, load and merge
-        if let Some(ref config_path) = config.config_file {
-            if let Ok(file_config) = loader::load_from_file(config_path) {
-                config = config.merge_with(file_config);
+        // First pass: check if --config-file is specified
+        let args: Vec<String> = std::env::args().collect();
+        let mut config_file_path: Option<PathBuf> = None;
+        
+        for i in 0..args.len() {
+            if args[i] == "--config-file" && i + 1 < args.len() {
+                config_file_path = Some(PathBuf::from(&args[i + 1]));
+                break;
             }
+        }
+
+        // If config file specified, load it to set environment variables
+        if let Some(ref path) = config_file_path {
+            if let Err(e) = dotenvy::from_path(path) {
+                eprintln!("Warning: Failed to load config file {}: {}", path.display(), e);
+            }
+        }
+
+        // Parse CLI arguments
+        let mut config = <Config as Parser>::parse();
+        
+        // Store the config file path
+        config.config_file = config_file_path.clone();
+
+        // If config file was loaded, override with env vars where CLI didn't specify
+        if config_file_path.is_some() {
+            config = Self::apply_env_overrides(config, &args);
         }
 
         // Validate
         config.validate().expect("Invalid configuration");
+
+        config
+    }
+
+    /// ID SRS: SRS-FN-CONFIG-001-B
+    /// Title: apply_env_overrides
+    ///
+    /// Description: VRConnect shall apply environment variable overrides to configuration
+    /// for values that were not explicitly set via CLI arguments.
+    ///
+    /// Version: V1.0
+    ///
+    /// # Arguments
+    /// * `config` - Parsed configuration
+    /// * `args` - Command line arguments
+    ///
+    /// # Returns
+    /// Config with environment overrides applied
+    fn apply_env_overrides(mut config: Config, args: &[String]) -> Self {
+        // Helper to check if an argument was explicitly provided
+        let has_arg = |flag: &str| args.iter().any(|arg| arg == flag);
+        let has_arg_short = |short: char| args.iter().any(|arg| arg == &format!("-{}", short));
+
+        // Socket.IO
+        if !has_arg("--socketio-host") {
+            if let Ok(val) = std::env::var("SOCKETIO_HOST") {
+                config.socketio_host = val;
+            }
+        }
+        if !has_arg("--socketio-port") && !has_arg_short('p') {
+            if let Ok(val) = std::env::var("SOCKETIO_PORT") {
+                if let Ok(port) = val.parse() {
+                    config.socketio_port = port;
+                }
+            }
+        }
+        
+        // Console Output
+        if !has_arg("--output-console-enabled") {
+            if let Ok(val) = std::env::var("OUTPUT_CONSOLE_ENABLED") {
+                if let Ok(enabled) = val.parse() {
+                    config.output_console_enabled = enabled;
+                }
+            }
+        }
+        if !has_arg("--output-console-verbose") && !has_arg_short('v') {
+            if let Ok(val) = std::env::var("OUTPUT_CONSOLE_VERBOSE") {
+                if let Ok(verbose) = val.parse() {
+                    config.output_console_verbose = verbose;
+                }
+            }
+        }
+        if !has_arg("--output-console-colorized") {
+            if let Ok(val) = std::env::var("OUTPUT_CONSOLE_COLORIZED") {
+                if let Ok(colorized) = val.parse() {
+                    config.output_console_colorized = colorized;
+                }
+            }
+        }
+        
+        // BLE Output
+        if !has_arg("--output-ble-enabled") {
+            if let Ok(val) = std::env::var("OUTPUT_BLE_ENABLED") {
+                if let Ok(enabled) = val.parse() {
+                    config.output_ble_enabled = enabled;
+                }
+            }
+        }
+        if !has_arg("--output-ble-device-name") {
+            if let Ok(val) = std::env::var("OUTPUT_BLE_DEVICE_NAME") {
+                config.output_ble_device_name = val;
+            }
+        }
+        if !has_arg("--output-ble-service-uuid") {
+            if let Ok(val) = std::env::var("OUTPUT_BLE_SERVICE_UUID") {
+                config.output_ble_service_uuid = val;
+            }
+        }
+        
+        // File Output
+        if !has_arg("--output-file-enabled") {
+            if let Ok(val) = std::env::var("OUTPUT_FILE_ENABLED") {
+                if let Ok(enabled) = val.parse() {
+                    config.output_file_enabled = enabled;
+                }
+            }
+        }
+        if !has_arg("--output-file-base-path") {
+            if let Ok(val) = std::env::var("OUTPUT_FILE_BASE_PATH") {
+                config.output_file_base_path = val;
+            }
+        }
+        if !has_arg("--output-file-max-size-mb") {
+            if let Ok(val) = std::env::var("OUTPUT_FILE_MAX_SIZE_MB") {
+                if let Ok(size) = val.parse() {
+                    config.output_file_max_size_mb = size;
+                }
+            }
+        }
+        if !has_arg("--output-file-archive-threshold-gb") {
+            if let Ok(val) = std::env::var("OUTPUT_FILE_ARCHIVE_THRESHOLD_GB") {
+                if let Ok(threshold) = val.parse() {
+                    config.output_file_archive_threshold_gb = threshold;
+                }
+            }
+        }
+        if !has_arg("--output-file-critical-disk-percent") {
+            if let Ok(val) = std::env::var("OUTPUT_FILE_CRITICAL_DISK_PERCENT") {
+                if let Ok(percent) = val.parse() {
+                    config.output_file_critical_disk_percent = percent;
+                }
+            }
+        }
+        
+        // Debug
+        if !has_arg("--debug-enabled") {
+            if let Ok(val) = std::env::var("DEBUG_ENABLED") {
+                if let Ok(enabled) = val.parse() {
+                    config.debug_enabled = enabled;
+                }
+            }
+        }
+        if !has_arg("--debug-output-path") {
+            if let Ok(val) = std::env::var("DEBUG_OUTPUT_PATH") {
+                config.debug_output_path = val;
+            }
+        }
+        
+        // Logging
+        if !has_arg("--log-level") {
+            if let Ok(val) = std::env::var("LOG_LEVEL") {
+                config.log_level = val;
+            }
+        }
+        if !has_arg("--log-dir") {
+            if let Ok(val) = std::env::var("LOG_DIR") {
+                config.log_dir = val;
+            }
+        }
 
         config
     }
@@ -456,9 +615,14 @@ mod tests {
     ///
     /// Version: V1.0
     #[test]
+    #[serial]
     fn test_config_with_file_loading() {
         use std::io::Write;
         use tempfile::NamedTempFile;
+
+        // Clear any existing env vars first
+        std::env::remove_var("SOCKETIO_PORT");
+        std::env::remove_var("LOG_LEVEL");
 
         // Create a temp config file
         let mut temp_file = NamedTempFile::new().unwrap();
@@ -466,16 +630,26 @@ mod tests {
         writeln!(temp_file, "LOG_LEVEL=DEBUG").unwrap();
         temp_file.flush().unwrap();
 
-        let path_str = temp_file.path().to_str().unwrap();
+        // Load the file manually (simulating what Config::parse does)
+        dotenvy::from_path(temp_file.path()).unwrap();
 
-        // Parse with config file
-        let config = Config::parse_from(&["vrconnect", "--config-file", path_str]);
+        // Create config with the file path in args
+        let args = vec![
+            "vrconnect".to_string(),
+            "--config-file".to_string(),
+            temp_file.path().to_str().unwrap().to_string(),
+        ];
 
-        // Currently merge_with returns self without merging,
-        // so CLI/default values remain
-        // This test covers the file loading code path even if merge is not implemented
-        assert_eq!(config.socketio_port, 3000); // Default since merge not implemented
-        assert!(config.config_file.is_some());
+        // Apply env overrides manually
+        let base_config = Config::parse_from(&args);
+        let config = Config::apply_env_overrides(base_config, &args);
+
+        assert_eq!(config.socketio_port, 7777);
+        assert_eq!(config.log_level, "DEBUG");
+
+        // Cleanup
+        std::env::remove_var("SOCKETIO_PORT");
+        std::env::remove_var("LOG_LEVEL");
     }
 
     /// ID SRS: SRS-TEST-CONFIG-015
@@ -714,5 +888,47 @@ mod tests {
         assert_eq!(config.output_file_max_size_mb, 1000);
         assert_eq!(config.output_file_archive_threshold_gb, 10);
         assert_eq!(config.output_file_critical_disk_percent, 90);
+    }
+
+    /// ID SRS: SRS-TEST-CFG-025
+    /// Title: Test environment variable loading
+    ///
+    /// Description: VRConnect shall load configuration from environment variables.
+    ///
+    /// Version: V1.0
+    #[test]
+    #[serial]
+    fn test_env_var_loading() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        // Clear existing env vars
+        std::env::remove_var("SOCKETIO_PORT");
+        std::env::remove_var("OUTPUT_FILE_ENABLED");
+
+        // Create a temp config file
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "SOCKETIO_PORT=9999").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_ENABLED=true").unwrap();
+        temp_file.flush().unwrap();
+
+        // Load env vars
+        dotenvy::from_path(temp_file.path()).unwrap();
+
+        // Create config and apply overrides
+        let args = vec![
+            "vrconnect".to_string(),
+            "--config-file".to_string(),
+            temp_file.path().to_str().unwrap().to_string(),
+        ];
+        let base_config = Config::parse_from(&args);
+        let config = Config::apply_env_overrides(base_config, &args);
+
+        assert_eq!(config.socketio_port, 9999);
+        assert!(config.output_file_enabled);
+
+        // Cleanup
+        std::env::remove_var("SOCKETIO_PORT");
+        std::env::remove_var("OUTPUT_FILE_ENABLED");
     }
 }
