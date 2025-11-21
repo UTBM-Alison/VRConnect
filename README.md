@@ -1,153 +1,207 @@
-// /src/main.rs
-// Module: main
-// Purpose: Application entry point with initialization and lifecycle management
+# VRConnect - Medical Vital Data Middleware
 
-use vrconnect::config::Config;
-use vrconnect::core::VitalProcessor;
-use vrconnect::utils::logger::Logger;
+High-performance Rust middleware for real-time vital data processing via Socket.IO, Bluetooth Low Energy (BLE), and file recording.
 
-/// ID SRS: SRS-MAIN-001
-/// Title: main
-///
-/// Description: VRConnect shall initialize the application with configuration,
-/// setup logging, and start the vital processor with proper error handling.
-///
-/// Version: V1.0
-///
-/// # Returns
-/// Unit type on success, exits with error code on failure
-#[tokio::main]
-async fn main() {
-    // Parse CLI arguments first
-    let config = Config::parse();
+## Features
 
-    // Initialize logger
-    if let Err(e) = Logger::init(&config) {
-        eprintln!("Failed to initialize logger: {}", e);
-        std::process::exit(1);
-    }
+- **Socket.IO v4 Server**: WebSocket input with automatic zlib decompression
+- **Data Processing**: JSON cleaning, validation, and transformation
+- **Multi-Output**: 
+  - Console (compact/verbose)
+  - BLE GATT server
+  - **File recording with automatic rotation and archiving**
+- **Debug Mode**: Complete data logging (input/output) for troubleshooting
+- **Flexible Configuration**: CLI arguments or environment file
 
-    log::info!("VRConnect v1.0.0 starting...");
+## Quick Start
 
-    // Print banner
-    print_banner(&config);
+### Prerequisites
+```bash
+# Ubuntu/Debian
+sudo apt-get install bluez libbluetooth-dev libdbus-1-dev pkg-config
 
-    // Create and run processor
-    let processor = VitalProcessor::new(config);
+# Enable Bluetooth
+sudo systemctl enable bluetooth
+sudo systemctl start bluetooth
 
-    if let Err(e) = processor.run().await {
-        log::error!("Fatal error: {}", e);
-        std::process::exit(1);
-    }
+# Add user to bluetooth group
+sudo usermod -aG bluetooth $USER
+# Log out and back in
+```
 
-    log::info!("VRConnect stopped gracefully");
-}
+### Installation
+```bash
+cargo build --release
+```
 
-/// ID SRS: SRS-UTIL-001
-/// Title: print_banner
-///
-/// Description: VRConnect shall display the application banner with current
-/// configuration parameters for user information.
-///
-/// Version: V1.0
-///
-/// # Arguments
-/// * `config` - Application configuration
-fn print_banner(config: &Config) {
-    println!("\n{}", "═".repeat(70));
-    println!("  VRConnect - Medical Vital Data Middleware v1.0.0");
-    println!("{}", "═".repeat(70));
-    println!(
-        "  Socket.IO Server: {}:{}",
-        config.socketio_host, config.socketio_port
-    );
-    println!(
-        "  Console Output:   {}",
-        if config.output_console_enabled {
-            "Enabled"
-        } else {
-            "Disabled"
-        }
-    );
+### Configuration
 
-    if config.output_console_enabled {
-        println!("    └─ Verbose:     {}", config.output_console_verbose);
-        println!("    └─ Colorized:   {}", config.output_console_colorized);
-    }
+Copy `.env.example` to `.env` and adjust values:
+```bash
+cp .env.example .env
+```
 
-    println!(
-        "  BLE Output:       {}",
-        if config.output_ble_enabled {
-            "Enabled"
-        } else {
-            "Disabled"
-        }
-    );
+### Run
+```bash
+# Using environment file
+./target/release/vrconnect --config .env
 
-    if config.output_ble_enabled {
-        println!("    └─ Device Name: {}", config.output_ble_device_name);
-        println!("    └─ Service UUID: {}", config.output_ble_service_uuid);
-        println!("    └─ ⚠️  Waveforms excluded (MTU limit)");
-    }
+# Using CLI arguments
+./target/release/vrconnect --port 5000 --ble-enabled --output-file-enabled
 
-    println!(
-        "  File Output:      {}",
-        if config.output_file_enabled {
-            "Enabled"
-        } else {
-            "Disabled"
-        }
-    );
+# Debug mode
+./target/release/vrconnect --debug --debug-output ./logs/debug.log
+```
 
-    if config.output_file_enabled {
-        println!("    └─ Base Path:   {}", config.output_file_base_path);
-        println!(
-            "    └─ Max Size:    {} MB per file",
-            config.output_file_max_size_mb
-        );
-        println!(
-            "    └─ Archive At:  {} GB",
-            config.output_file_archive_threshold_gb
-        );
-        println!(
-            "    └─ Disk Alert:  {}%",
-            config.output_file_critical_disk_percent
-        );
-    }
+## CLI Options
 
-    println!(
-        "  Debug Mode:       {}",
-        if config.debug_enabled {
-            "Enabled"
-        } else {
-            "Disabled"
-        }
-    );
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--config <PATH>` | Path to configuration file | `.env` |
+| `--port <PORT>` | Socket.IO server port | `3000` |
+| `--host <HOST>` | Socket.IO server host | `127.0.0.1` |
+| `--verbose` | Enable verbose console output | `false` |
+| `--ble-enabled` | Enable BLE output | `false` |
+| `--ble-name <NAME>` | BLE device name | `VitalConnect` |
+| `--ble-uuid <UUID>` | BLE service UUID | Auto-generated |
+| `--output-file-enabled` | Enable file recording | `false` |
+| `--output-file-base-path <PATH>` | Base directory for recordings | `./data/vrconnect/recording` |
+| `--output-file-max-size-mb <SIZE>` | Max file size before rotation (MB) | `500` |
+| `--output-file-archive-threshold-gb <SIZE>` | Archive threshold (GB) | `5` |
+| `--output-file-critical-disk-percent <PCT>` | Critical disk usage % | `95` |
+| `--debug` | Enable debug mode | `false` |
+| `--debug-output <PATH>` | Debug log file path | `./logs/debug.log` |
+| `--log-level <LEVEL>` | Log level (INFO/WARN/ERROR/DEBUG/SUCCESS) | `INFO` |
 
-    if config.debug_enabled {
-        println!("    └─ Output File: {}", config.debug_output_path);
-    }
+## Architecture
+```
+Socket.IO Input → Decompression → JSON Cleaning → Transformation → Outputs (Console + BLE + File)
+```
 
-    println!("  Log Level:        {}", config.log_level);
-    println!("  Log Directory:    {}", config.log_dir);
-    println!("{}", "═".repeat(70));
-    println!("  Press Ctrl+C to stop");
-    println!("{}\n", "═".repeat(70));
-}
+### Data Flow
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+1. **Input**: Socket.IO v4 server receives vital data (possibly compressed)
+2. **Decompression**: Automatic zlib decompression if detected
+3. **Cleaning**: JSON sanitization (control chars, NaN/Infinity, decimal separators)
+4. **Transformation**: VitalData → ProcessedData with type detection
+5. **Output**: Multi-channel (console, BLE, and/or file)
 
-    #[test]
-    fn test_main_skeleton() {
-        // TODO: Implement main initialization tests
-        assert!(true);
-    }
+### File Output
 
-    #[test]
-    fn test_banner_display() {
-        // TODO: Implement banner formatting tests
-        assert!(true);
-    }
-}
+**Features:**
+- **Automatic Rotation**: Files rotate at 500 MB (configurable)
+- **Daily Organization**: Files organized in date folders (`YYYYMMDD`)
+- **Automatic Archiving**: 
+  - Archives when daily folder reaches 5 GB
+  - Archives old days at startup
+  - Archives previous day when date changes
+- **JSON Lines Format**: One JSON object per line for easy parsing
+- **Disk Monitoring**: Graceful shutdown at 95% disk usage
+- **Complete Data Capture**: ALL tracks including full waveforms
+
+**Directory Structure:**
+```
+/data/vrconnect/recording/
+├── data/
+│   ├── 20250115/
+│   │   ├── vrconnect_20250115_080000_090000.json (500 MB - completed)
+│   │   ├── vrconnect_20250115_090000_100000.json (500 MB - completed)
+│   │   └── vrconnect_20250115_100000_ongoing.json (active)
+│   └── 20250116/
+│       └── vrconnect_20250116_000000_ongoing.json
+└── archive/
+    ├── 20250114/
+    │   └── archive_20250114_000000_235959.zip
+    └── 20250115/
+        └── archive_20250115_080000_100000.zip
+```
+
+**File Naming:**
+- Active: `vrconnect_YYYYMMDD_HHMMSS_ongoing.json`
+- Completed: `vrconnect_YYYYMMDD_HHMMSS_HHMMSS.json` (start_end)
+- Archive: `archive_YYYYMMDD_HHMMSS_HHMMSS.zip` (first_last)
+
+### BLE Limitations
+
+**Important**: BLE output only transmits **non-waveform tracks** (HR, SpO2, NIBP, etc.) due to MTU payload limits. Waveform data (ECG, PLETH, CO2) is excluded from BLE transmission.
+
+File output includes ALL data including complete waveforms.
+
+## BLE Connection
+
+### Service Information
+- **Service UUID**: Configurable (default: `12345678-1234-5678-1234-567812345678`)
+- **Data Characteristic**: Read + Notify enabled
+- **Data Format**: JSON with number/string tracks only
+
+### Connect via Smartphone
+
+**Android/iOS**: Install "nRF Connect" app
+1. Scan for devices
+2. Connect to "VitalConnect" (or custom name)
+3. Enable notifications on data characteristic
+4. Receive real-time JSON updates
+
+## Debug Mode
+
+Debug mode logs all incoming and outgoing data:
+```bash
+./vrconnect --debug --debug-output ./debug_session.log
+```
+
+**Logged Information**:
+- Raw Socket.IO frames (text/binary)
+- Decompressed data
+- Cleaned JSON
+- Transformed ProcessedData
+- BLE output payloads
+- File output operations
+- Console output
+
+**Warning**: Debug logs grow rapidly with high-frequency data. Use for troubleshooting only.
+
+## Logging
+
+Logs are written to `LOG_DIR` (default: `./logs/`) with daily rotation:
+- `vrconnect-2025-01-15.log`
+- `vrconnect-2025-01-16.log`
+
+**Log Levels**:
+- `SUCCESS`: Operation completed successfully
+- `INFO`: General information
+- `WARNING`: Non-critical issues
+- `ERROR`: Errors requiring attention
+- `DEBUG`: Detailed debugging information
+
+## Testing
+```bash
+# Run all tests
+cargo test
+
+# Unit tests only
+cargo test --lib
+
+# Functional tests only
+cargo test --test functional
+
+# With coverage
+cargo tarpaulin --out Html
+```
+
+## Performance Considerations
+
+**File Output:**
+- Optimized for high-frequency data (async I/O)
+- Minimal overhead with buffered writes
+- Automatic compression reduces storage by ~70%
+- Background archiving doesn't block data recording
+
+**Disk Space:**
+- Monitor available space regularly
+- Archive retention policy depends on your storage
+- Example: 500 MB/file, 10 files/hour = ~120 GB/day uncompressed
+- With compression: ~36 GB/day
+
+## License
+
+Proprietary - UTBM Project
