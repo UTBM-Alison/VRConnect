@@ -6,7 +6,7 @@ use crate::config::Config;
 use crate::domain::ProcessedData;
 use crate::error::Result;
 use crate::input::SocketIOServer;
-use crate::output::{BleOutput, ConsoleOutput};
+use crate::output::{BleOutput, ConsoleOutput, FileOutput};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Arc;
@@ -103,6 +103,32 @@ impl VitalProcessor {
         }
     }
 
+    /// ID SRS: SRS-FN-PROCESSOR-017
+    /// Title: create_file_output
+    ///
+    /// Description: VRConnect shall create file output if enabled.
+    ///
+    /// Version: V1.0
+    ///
+    /// # Returns
+    /// Optional FileOutput or error
+    async fn create_file_output(&self) -> Result<Option<Arc<FileOutput>>> {
+        if self.config.output_file_enabled {
+            log::info!("🗃️  Initializing file output...");
+            Ok(Some(Arc::new(
+                FileOutput::new(
+                    self.config.output_file_base_path.clone(),
+                    self.config.output_file_max_size_mb,
+                    self.config.output_file_archive_threshold_gb,
+                    self.config.output_file_critical_disk_percent,
+                )
+                .await?,
+            )))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// ID SRS: SRS-FN-PROCESSOR-004
     /// Title: process_single_data
     ///
@@ -115,12 +141,14 @@ impl VitalProcessor {
     /// * `data` - Processed data
     /// * `console` - Optional console output
     /// * `ble` - Optional BLE output
+    /// * `file` - Optional file output
     /// * `debug_enabled` - Debug flag
     /// * `debug_file` - Debug file handle
     async fn process_single_data(
         data: &ProcessedData,
         console: &Option<Arc<ConsoleOutput>>,
         ble: &Option<Arc<BleOutput>>,
+        file: &Option<Arc<FileOutput>>,
         debug_enabled: bool,
         debug_file: &Arc<RwLock<Option<std::fs::File>>>,
     ) {
@@ -140,6 +168,13 @@ impl VitalProcessor {
         if let Some(ref ble) = ble {
             if let Err(e) = ble.output(data).await {
                 log::error!("BLE output error: {}", e);
+            }
+        }
+
+        // Output to file
+        if let Some(ref file) = file {
+            if let Err(e) = file.output(data).await {
+                log::error!("File output error: {}", e);
             }
         }
     }
@@ -164,6 +199,7 @@ impl VitalProcessor {
         // Create outputs
         let console_output = self.create_console_output();
         let ble_output = self.create_ble_output().await?;
+        let file_output = self.create_file_output().await?;
 
         // Start BLE server if enabled
         let ble_task = if let Some(ref ble) = ble_output {
@@ -198,6 +234,7 @@ impl VitalProcessor {
         let debug_enabled = self.config.debug_enabled;
         let ble_output_clone = ble_output.clone();
         let console_output_clone = console_output.clone();
+        let file_output_clone = file_output.clone();
 
         let processing_task = tokio::spawn(async move {
             while let Some(data) = rx.recv().await {
@@ -205,6 +242,7 @@ impl VitalProcessor {
                     &data,
                     &console_output_clone,
                     &ble_output_clone,
+                    &file_output_clone,
                     debug_enabled,
                     &debug_file,
                 )
@@ -364,17 +402,9 @@ mod tests {
     use std::io::Read;
     use tempfile::NamedTempFile;
 
-    // ... (gardez tous les tests précédents) ...
-
-    /// ID SRS: SRS-TEST-PROC-009
-    /// Title: Test create_console_output enabled
-    ///
-    /// Description: VRConnect shall create console output when enabled.
-    ///
-    /// Version: V1.0
-    #[test]
-    fn test_create_console_output_enabled() {
-        let config = Config {
+    /// Helper function to create a default test config
+    fn create_test_config() -> Config {
+        Config {
             config_file: None,
             socketio_host: "127.0.0.1".to_string(),
             socketio_port: 3000,
@@ -384,12 +414,27 @@ mod tests {
             output_ble_enabled: false,
             output_ble_device_name: "Test".to_string(),
             output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
+            output_file_enabled: false,
+            output_file_base_path: "./data/test".to_string(),
+            output_file_max_size_mb: 500,
+            output_file_archive_threshold_gb: 5,
+            output_file_critical_disk_percent: 95,
             debug_enabled: false,
             debug_output_path: "./debug.log".to_string(),
             log_level: "INFO".to_string(),
             log_dir: "./logs".to_string(),
-        };
+        }
+    }
 
+    /// ID SRS: SRS-TEST-PROC-009
+    /// Title: Test create_console_output enabled
+    ///
+    /// Description: VRConnect shall create console output when enabled.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_create_console_output_enabled() {
+        let config = create_test_config();
         let processor = VitalProcessor::new(config);
         let console = processor.create_console_output();
         assert!(console.is_some());
@@ -403,21 +448,8 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_create_console_output_disabled() {
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: false,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.output_console_enabled = false;
 
         let processor = VitalProcessor::new(config);
         let console = processor.create_console_output();
@@ -432,21 +464,8 @@ mod tests {
     /// Version: V1.0
     #[tokio::test]
     async fn test_create_ble_output_enabled() {
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: true,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.output_ble_enabled = true;
 
         let processor = VitalProcessor::new(config);
         let ble = processor.create_ble_output().await.unwrap();
@@ -461,22 +480,7 @@ mod tests {
     /// Version: V1.0
     #[tokio::test]
     async fn test_create_ble_output_disabled() {
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
-
+        let config = create_test_config();
         let processor = VitalProcessor::new(config);
         let ble = processor.create_ble_output().await.unwrap();
         assert!(ble.is_none());
@@ -493,25 +497,16 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let debug_path = temp_file.path().to_str().unwrap().to_string();
 
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: false,
-            output_ble_enabled: true,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: true,
-            debug_output_path: debug_path.clone(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.output_console_colorized = false;
+        config.output_ble_enabled = true;
+        config.debug_enabled = true;
+        config.debug_output_path = debug_path.clone();
 
         let processor = VitalProcessor::new(config);
         let console = processor.create_console_output();
         let ble = processor.create_ble_output().await.unwrap();
+        let file = None;
 
         let room = ProcessedRoom {
             room_index: 0,
@@ -534,8 +529,7 @@ mod tests {
 
         let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
 
-        // Should not panic
-        VitalProcessor::process_single_data(&data, &console, &ble, true, &processor.debug_file)
+        VitalProcessor::process_single_data(&data, &console, &ble, &file, true, &processor.debug_file)
             .await;
     }
 
@@ -551,25 +545,12 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let debug_path = temp_file.path().to_str().unwrap().to_string();
 
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: true,
-            debug_output_path: debug_path.clone(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.debug_enabled = true;
+        config.debug_output_path = debug_path.clone();
 
         let processor = VitalProcessor::new(config);
 
-        // Create waveform with 25 points (to test line wrapping)
         let points: Vec<f64> = (0..25).map(|i| i as f64 * 0.1).collect();
 
         let room = ProcessedRoom {
@@ -600,23 +581,17 @@ mod tests {
 
         VitalProcessor::write_debug_data(&processor.debug_file, &data).await;
 
-        // Verify all waveform details were written
         drop(processor);
         let mut file = std::fs::File::open(&debug_path).unwrap();
         let mut contents = String::new();
         file.read_to_string(&mut contents).unwrap();
 
-        // Check stats were written
         assert!(contents.contains("Waveform Stats:"));
         assert!(contents.contains("Count: 25"));
         assert!(contents.contains("Min: 0.000000"));
         assert!(contents.contains("Max: 2.400000"));
         assert!(contents.contains("Avg: 1.200000"));
-
-        // Check points header
         assert!(contents.contains("Waveform Points (25 total):"));
-
-        // Check some point values (formatted with 6 decimals)
         assert!(contents.contains("0.000000"));
         assert!(contents.contains("0.100000"));
     }
@@ -629,27 +604,15 @@ mod tests {
     /// Version: V1.0
     #[tokio::test]
     async fn test_process_single_data_ble_error() {
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: false,
-            output_console_verbose: false,
-            output_console_colorized: false,
-            output_ble_enabled: true,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.output_console_enabled = false;
+        config.output_ble_enabled = true;
 
         let processor = VitalProcessor::new(config);
         let console = processor.create_console_output();
         let ble = processor.create_ble_output().await.unwrap();
+        let file = None;
 
-        // Create data that will be processed by BLE
         let room = ProcessedRoom {
             room_index: 0,
             room_name: "BED_01".to_string(),
@@ -671,8 +634,7 @@ mod tests {
 
         let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
 
-        // Should handle any BLE errors gracefully
-        VitalProcessor::process_single_data(&data, &console, &ble, false, &processor.debug_file)
+        VitalProcessor::process_single_data(&data, &console, &ble, &file, false, &processor.debug_file)
             .await;
     }
 
@@ -684,26 +646,12 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_processor_invalid_debug_path() {
-        // Initialize logger to capture error
         let _ = env_logger::builder().is_test(true).try_init();
 
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: true,
-            debug_output_path: "/root/cannot/write/here/debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.debug_enabled = true;
+        config.debug_output_path = "/root/cannot/write/here/debug.log".to_string();
 
-        // Should not panic, but log error
         let processor = VitalProcessor::new(config);
         assert!(processor.config.debug_enabled);
     }
@@ -719,25 +667,12 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let debug_path = temp_file.path().to_str().unwrap().to_string();
 
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: true,
-            debug_output_path: debug_path.clone(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.debug_enabled = true;
+        config.debug_output_path = debug_path.clone();
 
         let processor = VitalProcessor::new(config);
 
-        // Create waveform with exactly 10 points (edge case for line wrapping)
         let points: Vec<f64> = (0..10).map(|i| i as f64).collect();
 
         let room = ProcessedRoom {
@@ -768,7 +703,6 @@ mod tests {
 
         VitalProcessor::write_debug_data(&processor.debug_file, &data).await;
 
-        // Verify it was written correctly
         drop(processor);
         let mut file = std::fs::File::open(&debug_path).unwrap();
         let mut contents = String::new();
@@ -789,25 +723,12 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let debug_path = temp_file.path().to_str().unwrap().to_string();
 
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: true,
-            debug_output_path: debug_path.clone(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.debug_enabled = true;
+        config.debug_output_path = debug_path.clone();
 
         let processor = VitalProcessor::new(config);
 
-        // Create waveform with 11 points (triggers line wrap at 10th point)
         let points: Vec<f64> = (0..11).map(|i| i as f64).collect();
 
         let room = ProcessedRoom {
@@ -838,7 +759,6 @@ mod tests {
 
         VitalProcessor::write_debug_data(&processor.debug_file, &data).await;
 
-        // Verify newline formatting
         drop(processor);
         let mut file = std::fs::File::open(&debug_path).unwrap();
         let mut contents = String::new();
@@ -846,5 +766,102 @@ mod tests {
 
         assert!(contents.contains("Waveform Points (11 total):"));
         assert!(contents.contains("10.000000"));
+    }
+
+    /// ID SRS: SRS-TEST-PROC-019
+    /// Title: Test create_file_output enabled
+    ///
+    /// Description: VRConnect shall create file output when enabled.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_create_file_output_enabled() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_str().unwrap().to_string();
+
+        let mut config = create_test_config();
+        config.output_file_enabled = true;
+        config.output_file_base_path = base_path;
+
+        let processor = VitalProcessor::new(config);
+        let file = processor.create_file_output().await.unwrap();
+        assert!(file.is_some());
+    }
+
+    /// ID SRS: SRS-TEST-PROC-020
+    /// Title: Test create_file_output disabled
+    ///
+    /// Description: VRConnect shall not create file output when disabled.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_create_file_output_disabled() {
+        let config = create_test_config();
+        let processor = VitalProcessor::new(config);
+        let file = processor.create_file_output().await.unwrap();
+        assert!(file.is_none());
+    }
+
+    /// ID SRS: SRS-TEST-PROC-021
+    /// Title: Test process_single_data with file output
+    ///
+    /// Description: VRConnect shall process data through file output.
+    ///
+    /// Version: V1.0
+    #[tokio::test]
+    async fn test_process_single_data_with_file() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path().to_str().unwrap().to_string();
+
+        let temp_file = NamedTempFile::new().unwrap();
+        let debug_path = temp_file.path().to_str().unwrap().to_string();
+
+        let mut config = create_test_config();
+        config.output_console_colorized = false;
+        config.output_ble_enabled = true;
+        config.output_file_enabled = true;
+        config.output_file_base_path = base_path;
+        config.debug_enabled = true;
+        config.debug_output_path = debug_path.clone();
+
+        let processor = VitalProcessor::new(config);
+        let console = processor.create_console_output();
+        let ble = processor.create_ble_output().await.unwrap();
+        let file = processor.create_file_output().await.unwrap();
+
+        let room = ProcessedRoom {
+            room_index: 0,
+            room_name: "BED_01".to_string(),
+            tracks: vec![ProcessedTrack {
+                name: "HR".to_string(),
+                display_value: "75.000".to_string(),
+                raw_value: Some(75.0),
+                unit: "bpm".to_string(),
+                timestamp: Utc::now(),
+                room_index: 0,
+                room_name: "BED_01".to_string(),
+                track_index: 0,
+                record_index: 0,
+                track_type: TrackType::Number,
+                waveform_stats: None,
+                waveform_points: None,
+            }],
+        };
+
+        let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
+
+        VitalProcessor::process_single_data(
+            &data,
+            &console,
+            &ble,
+            &file,
+            true,
+            &processor.debug_file,
+        )
+        .await;
     }
 }

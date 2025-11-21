@@ -4,6 +4,8 @@
 
 pub mod ble;
 pub mod console;
+pub mod file;
 
 pub use ble::BleOutput;
 pub use console::ConsoleOutput;
+pub use file::FileOutput;

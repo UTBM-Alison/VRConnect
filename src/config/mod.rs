@@ -62,6 +62,27 @@ pub struct Config {
     #[arg(long, default_value = "12345678-1234-5678-1234-567812345678")]
     pub output_ble_service_uuid: String,
 
+    // File Output Configuration
+    /// Enable file output for complete data recording
+    #[arg(long, default_value = "false")]
+    pub output_file_enabled: bool,
+
+    /// Base directory path for file output (data and archives subdirs will be created)
+    #[arg(long, default_value = "./data/vrconnect/recording")]
+    pub output_file_base_path: String,
+
+    /// Maximum size per file in MB before rotation
+    #[arg(long, default_value = "500")]
+    pub output_file_max_size_mb: u64,
+
+    /// Threshold in GB for daily folder before archiving old files
+    #[arg(long, default_value = "5")]
+    pub output_file_archive_threshold_gb: u64,
+
+    /// Critical disk usage percentage that triggers shutdown
+    #[arg(long, default_value = "95")]
+    pub output_file_critical_disk_percent: u8,
+
     // Debug Configuration
     /// Enable debug mode
     #[arg(long, default_value = "false")]
@@ -153,6 +174,29 @@ impl Config {
             }
         }
 
+        // Validate file output configuration
+        if self.output_file_enabled {
+            if self.output_file_max_size_mb == 0 {
+                return Err("File output max size must be greater than 0".to_string());
+            }
+
+            if self.output_file_archive_threshold_gb == 0 {
+                return Err("File output archive threshold must be greater than 0".to_string());
+            }
+
+            if self.output_file_critical_disk_percent == 0
+                || self.output_file_critical_disk_percent > 100
+            {
+                return Err(
+                    "File output critical disk percent must be between 1 and 100".to_string(),
+                );
+            }
+
+            if self.output_file_base_path.trim().is_empty() {
+                return Err("File output base path cannot be empty".to_string());
+            }
+        }
+
         // Validate log level
         let valid_levels = ["SUCCESS", "INFO", "WARNING", "ERROR", "DEBUG"];
         if !valid_levels.contains(&self.log_level.to_uppercase().as_str()) {
@@ -182,6 +226,31 @@ impl Config {
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    /// Helper function to create a default test config
+    fn create_test_config() -> Config {
+        Config {
+            config_file: None,
+            socketio_host: "127.0.0.1".to_string(),
+            socketio_port: 3000,
+            output_console_enabled: true,
+            output_console_verbose: false,
+            output_console_colorized: true,
+            output_ble_enabled: false,
+            output_ble_device_name: "Test".to_string(),
+            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
+            output_file_enabled: false,
+            output_file_base_path: "./data/vrconnect/recording".to_string(),
+            output_file_max_size_mb: 500,
+            output_file_archive_threshold_gb: 5,
+            output_file_critical_disk_percent: 95,
+            debug_enabled: false,
+            debug_output_path: "./debug.log".to_string(),
+            log_level: "INFO".to_string(),
+            log_dir: "./logs".to_string(),
+        }
+    }
+
     /// ID SRS: SRS-TEST-CFG-001
     /// Title: Test Config default values
     ///
@@ -191,7 +260,6 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_config_defaults() {
-        // Parse empty args to get defaults
         let config = Config::parse_from(vec!["vrconnect"]);
 
         assert_eq!(config.socketio_host, "127.0.0.1");
@@ -199,8 +267,16 @@ mod tests {
         assert!(config.output_console_enabled);
         assert!(!config.output_console_verbose);
         assert!(config.output_console_colorized);
-        assert!(!config.output_ble_enabled); // BLE disabled by default
+        assert!(!config.output_ble_enabled);
         assert_eq!(config.output_ble_device_name, "VRConnect");
+        assert!(!config.output_file_enabled);
+        assert_eq!(
+            config.output_file_base_path,
+            "./data/vrconnect/recording"
+        );
+        assert_eq!(config.output_file_max_size_mb, 500);
+        assert_eq!(config.output_file_archive_threshold_gb, 5);
+        assert_eq!(config.output_file_critical_disk_percent, 95);
         assert!(!config.debug_enabled);
         assert_eq!(config.log_level, "INFO");
         assert_eq!(config.log_dir, "./logs");
@@ -431,21 +507,9 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_validate_invalid_ble_uuid() {
-        let mut config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: true,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "INVALID-UUID".to_string(), // Invalid
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.output_ble_enabled = true;
+        config.output_ble_service_uuid = "INVALID-UUID".to_string();
 
         let result = config.validate();
         assert!(result.is_err());
@@ -460,21 +524,8 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_validate_invalid_log_level() {
-        let mut config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INVALID_LEVEL".to_string(), // Invalid
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.log_level = "INVALID_LEVEL".to_string();
 
         let result = config.validate();
         assert!(result.is_err());
@@ -490,21 +541,9 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_socket_url() {
-        let config = Config {
-            config_file: None,
-            socketio_host: "192.168.1.100".to_string(),
-            socketio_port: 8080,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
+        let mut config = create_test_config();
+        config.socketio_host = "192.168.1.100".to_string();
+        config.socketio_port = 8080;
 
         assert_eq!(config.socket_url(), "http://192.168.1.100:8080");
     }
@@ -517,42 +556,12 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_merge_with() {
-        let cli_config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "CLI".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: "./logs".to_string(),
-        };
-
-        let file_config = Config {
-            config_file: None,
-            socketio_host: "10.0.0.1".to_string(),
-            socketio_port: 5000,
-            output_console_enabled: false,
-            output_console_verbose: true,
-            output_console_colorized: false,
-            output_ble_enabled: true,
-            output_ble_device_name: "FILE".to_string(),
-            output_ble_service_uuid: "87654321-4321-8765-4321-876543218765".to_string(),
-            debug_enabled: true,
-            debug_output_path: "./file_debug.log".to_string(),
-            log_level: "DEBUG".to_string(),
-            log_dir: "./file_logs".to_string(),
-        };
+        let cli_config = create_test_config();
+        let file_config = create_test_config();
 
         let merged = cli_config.merge_with(file_config);
 
         // Currently merge_with returns self (CLI config takes precedence)
-        // Adjust assertions based on actual merge logic
         assert_eq!(merged.socketio_host, "127.0.0.1");
         assert_eq!(merged.socketio_port, 3000);
     }
@@ -598,8 +607,6 @@ mod tests {
         writeln!(temp_file, "LOG_LEVEL=INFO").unwrap();
         temp_file.flush().unwrap();
 
-        // Simulate command line args by using parse_from instead
-        // (parse() would read from std::env::args which we can't easily mock)
         let config = Config::parse_from(&[
             "vrconnect",
             "--config-file",
@@ -608,7 +615,6 @@ mod tests {
             "4000",
         ]);
 
-        // This exercises the parse logic
         assert_eq!(config.socketio_port, 4000);
         assert!(config.config_file.is_some());
     }
@@ -623,18 +629,15 @@ mod tests {
     #[test]
     #[serial]
     fn test_config_file_merge_path() {
-        use serial_test::serial;
         use std::io::Write;
         use tempfile::NamedTempFile;
 
-        // Create config file
         let mut temp_file = NamedTempFile::new().unwrap();
         writeln!(temp_file, "SOCKETIO_HOST=192.168.1.1").unwrap();
         writeln!(temp_file, "SOCKETIO_PORT=7000").unwrap();
         writeln!(temp_file, "LOG_LEVEL=TRACE").unwrap();
         temp_file.flush().unwrap();
 
-        // Set environment to simulate parse()
         std::env::set_var("TEST_CONFIG_FILE", temp_file.path().to_str().unwrap());
 
         let config = Config::parse_from(&[
@@ -643,13 +646,73 @@ mod tests {
             temp_file.path().to_str().unwrap(),
         ]);
 
-        // File is specified
         assert!(config.config_file.is_some());
 
-        // Validate is called (won't panic if valid)
         let validation_result = config.validate();
         assert!(validation_result.is_ok());
 
         std::env::remove_var("TEST_CONFIG_FILE");
+    }
+
+    /// ID SRS: SRS-TEST-CFG-023
+    /// Title: Test file output configuration validation
+    ///
+    /// Description: VRConnect shall validate file output parameters.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_file_output_validation() {
+        let mut config = create_test_config();
+        config.output_file_enabled = true;
+
+        // Test invalid max_size_mb
+        config.output_file_max_size_mb = 0;
+        assert!(config.validate().is_err());
+
+        config.output_file_max_size_mb = 500;
+        config.output_file_archive_threshold_gb = 0;
+        assert!(config.validate().is_err());
+
+        config.output_file_archive_threshold_gb = 5;
+        config.output_file_critical_disk_percent = 0;
+        assert!(config.validate().is_err());
+
+        config.output_file_critical_disk_percent = 101;
+        assert!(config.validate().is_err());
+
+        config.output_file_critical_disk_percent = 95;
+        config.output_file_base_path = "".to_string();
+        assert!(config.validate().is_err());
+
+        config.output_file_base_path = "./data/test".to_string();
+        assert!(config.validate().is_ok());
+    }
+
+    /// ID SRS: SRS-TEST-CFG-024
+    /// Title: Test file output CLI parsing
+    ///
+    /// Description: VRConnect shall parse file output parameters from CLI.
+    ///
+    /// Version: V1.0
+    #[test]
+    fn test_config_parse_file_output() {
+        let config = Config::parse_from(vec![
+            "vrconnect",
+            "--output-file-enabled",
+            "--output-file-base-path",
+            "/data/recordings",
+            "--output-file-max-size-mb",
+            "1000",
+            "--output-file-archive-threshold-gb",
+            "10",
+            "--output-file-critical-disk-percent",
+            "90",
+        ]);
+
+        assert!(config.output_file_enabled);
+        assert_eq!(config.output_file_base_path, "/data/recordings");
+        assert_eq!(config.output_file_max_size_mb, 1000);
+        assert_eq!(config.output_file_archive_threshold_gb, 10);
+        assert_eq!(config.output_file_critical_disk_percent, 90);
     }
 }

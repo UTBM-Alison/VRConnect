@@ -179,6 +179,30 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
+    /// Helper function to create a default test config
+    fn create_test_config(log_dir: String) -> Config {
+        Config {
+            config_file: None,
+            socketio_host: "127.0.0.1".to_string(),
+            socketio_port: 3000,
+            output_console_enabled: true,
+            output_console_verbose: false,
+            output_console_colorized: true,
+            output_ble_enabled: false,
+            output_ble_device_name: "Test".to_string(),
+            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
+            output_file_enabled: false,
+            output_file_base_path: "./data/test".to_string(),
+            output_file_max_size_mb: 500,
+            output_file_archive_threshold_gb: 5,
+            output_file_critical_disk_percent: 95,
+            debug_enabled: false,
+            debug_output_path: "./debug.log".to_string(),
+            log_level: "INFO".to_string(),
+            log_dir,
+        }
+    }
+
     /// ID SRS: SRS-TEST-LOG-001
     /// Title: Test valid log level parsing
     ///
@@ -435,28 +459,10 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_logger_init() {
-        use crate::config::Config;
-        use tempfile::TempDir;
-
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("logs");
 
-        // Create a test config
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: log_path.to_str().unwrap().to_string(),
-        };
+        let config = create_test_config(log_path.to_str().unwrap().to_string());
 
         // Initialize logger (may fail if already initialized in other tests)
         let result = Logger::init(&config);
@@ -484,24 +490,7 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_logger_init_invalid_dir() {
-        use crate::config::Config;
-
-        // Try to create logger with invalid path (on Linux, /dev/null/logs is invalid)
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "INFO".to_string(),
-            log_dir: "/dev/null/impossible/path".to_string(),
-        };
+        let config = create_test_config("/dev/null/impossible/path".to_string());
 
         let result = Logger::init(&config);
         // Should fail because directory cannot be created
@@ -518,28 +507,12 @@ mod tests {
     /// Version: V1.0
     #[test]
     fn test_logger_all_levels() {
-        use crate::config::Config;
-        use tempfile::TempDir;
-
         for level in &["SUCCESS", "INFO", "WARNING", "ERROR", "DEBUG", "TRACE"] {
             let temp_dir = TempDir::new().unwrap();
             let log_path = temp_dir.path().join("logs");
 
-            let config = Config {
-                config_file: None,
-                socketio_host: "127.0.0.1".to_string(),
-                socketio_port: 3000,
-                output_console_enabled: true,
-                output_console_verbose: false,
-                output_console_colorized: true,
-                output_ble_enabled: false,
-                output_ble_device_name: "Test".to_string(),
-                output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-                debug_enabled: false,
-                debug_output_path: "./debug.log".to_string(),
-                log_level: level.to_string(),
-                log_dir: log_path.to_str().unwrap().to_string(),
-            };
+            let mut config = create_test_config(log_path.to_str().unwrap().to_string());
+            config.log_level = level.to_string();
 
             // Should parse level successfully
             let result = Logger::parse_level(&config.log_level);
@@ -557,7 +530,6 @@ mod tests {
     #[test]
     fn test_log_trait_methods() {
         use log::Log;
-        use tempfile::TempDir; // Ajout de l'import
 
         let temp_dir = TempDir::new().unwrap();
         let logger = Logger {
@@ -615,27 +587,11 @@ mod tests {
     #[test]
     #[serial] // Ensure this runs isolated
     fn test_complete_init_flow() {
-        use crate::config::Config;
-        use tempfile::TempDir;
-
         let temp_dir = TempDir::new().unwrap();
         let log_path = temp_dir.path().join("test_logs");
 
-        let config = Config {
-            config_file: None,
-            socketio_host: "127.0.0.1".to_string(),
-            socketio_port: 3000,
-            output_console_enabled: true,
-            output_console_verbose: false,
-            output_console_colorized: true,
-            output_ble_enabled: false,
-            output_ble_device_name: "Test".to_string(),
-            output_ble_service_uuid: "12345678-1234-5678-1234-567812345678".to_string(),
-            debug_enabled: false,
-            debug_output_path: "./debug.log".to_string(),
-            log_level: "DEBUG".to_string(),
-            log_dir: log_path.to_str().unwrap().to_string(),
-        };
+        let mut config = create_test_config(log_path.to_str().unwrap().to_string());
+        config.log_level = "DEBUG".to_string();
 
         // This should cover the complete init flow including set_max_level and Ok(())
         let result = Logger::init(&config);
