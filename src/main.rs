@@ -91,6 +91,31 @@ fn print_banner(config: &Config) {
     }
 
     println!(
+        "  File Output:      {}",
+        if config.output_file_enabled {
+            "Enabled"
+        } else {
+            "Disabled"
+        }
+    );
+
+    if config.output_file_enabled {
+        println!("    └─ Base Path:   {}", config.output_file_base_path);
+        println!(
+            "    └─ Max Size:    {} MB per file",
+            config.output_file_max_size_mb
+        );
+        println!(
+            "    └─ Archive At:  {} GB",
+            config.output_file_archive_threshold_gb
+        );
+        println!(
+            "    └─ Disk Alert:  {}%",
+            config.output_file_critical_disk_percent
+        );
+    }
+
+    println!(
         "  Debug Mode:       {}",
         if config.debug_enabled {
             "Enabled"

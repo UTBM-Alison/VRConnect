@@ -43,6 +43,12 @@ log = { version = "0.4", features = ["std"] }
 # Colors
 colored = "2.1"
 
+# File compression
+zip = "0.6"
+
+# Unix system calls
+libc = "0.2"
+
 [dev-dependencies]
 mockall = "0.12"
 tempfile = "3.8"

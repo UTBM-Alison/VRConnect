@@ -50,6 +50,24 @@ pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Config, String> {
             .unwrap_or_else(|_| "VitalConnect".to_string()),
         output_ble_service_uuid: std::env::var("OUTPUT_BLE_SERVICE_UUID")
             .unwrap_or_else(|_| "12345678-1234-5678-1234-567812345678".to_string()),
+        output_file_enabled: std::env::var("OUTPUT_FILE_ENABLED")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse()
+            .unwrap_or(false),
+        output_file_base_path: std::env::var("OUTPUT_FILE_BASE_PATH")
+            .unwrap_or_else(|_| "./data/vrconnect/recording".to_string()),
+        output_file_max_size_mb: std::env::var("OUTPUT_FILE_MAX_SIZE_MB")
+            .unwrap_or_else(|_| "500".to_string())
+            .parse()
+            .unwrap_or(500),
+        output_file_archive_threshold_gb: std::env::var("OUTPUT_FILE_ARCHIVE_THRESHOLD_GB")
+            .unwrap_or_else(|_| "5".to_string())
+            .parse()
+            .unwrap_or(5),
+        output_file_critical_disk_percent: std::env::var("OUTPUT_FILE_CRITICAL_DISK_PERCENT")
+            .unwrap_or_else(|_| "95".to_string())
+            .parse()
+            .unwrap_or(95),
         debug_enabled: std::env::var("DEBUG_ENABLED")
             .unwrap_or_else(|_| "false".to_string())
             .parse()
@@ -81,6 +99,11 @@ mod tests {
             "OUTPUT_BLE_ENABLED",
             "OUTPUT_BLE_DEVICE_NAME",
             "OUTPUT_BLE_SERVICE_UUID",
+            "OUTPUT_FILE_ENABLED",
+            "OUTPUT_FILE_BASE_PATH",
+            "OUTPUT_FILE_MAX_SIZE_MB",
+            "OUTPUT_FILE_ARCHIVE_THRESHOLD_GB",
+            "OUTPUT_FILE_CRITICAL_DISK_PERCENT",
             "DEBUG_ENABLED",
             "DEBUG_OUTPUT_PATH",
             "LOG_LEVEL",
@@ -108,6 +131,9 @@ mod tests {
         writeln!(temp_file, "SOCKETIO_HOST=192.168.1.1").unwrap();
         writeln!(temp_file, "SOCKETIO_PORT=5000").unwrap();
         writeln!(temp_file, "OUTPUT_CONSOLE_VERBOSE=true").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_ENABLED=true").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_BASE_PATH=/var/data/recording").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_MAX_SIZE_MB=1000").unwrap();
         writeln!(temp_file, "LOG_LEVEL=DEBUG").unwrap();
         temp_file.flush().unwrap();
 
@@ -118,6 +144,9 @@ mod tests {
         assert_eq!(config.socketio_host, "192.168.1.1");
         assert_eq!(config.socketio_port, 5000);
         assert!(config.output_console_verbose);
+        assert!(config.output_file_enabled);
+        assert_eq!(config.output_file_base_path, "/var/data/recording");
+        assert_eq!(config.output_file_max_size_mb, 1000);
         assert_eq!(config.log_level, "DEBUG");
 
         clear_env_vars();
@@ -279,6 +308,11 @@ mod tests {
             "OUTPUT_BLE_SERVICE_UUID=12345678-1234-5678-1234-567812345678"
         )
         .unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_ENABLED=true").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_BASE_PATH=/data/recordings").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_MAX_SIZE_MB=250").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_ARCHIVE_THRESHOLD_GB=10").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_CRITICAL_DISK_PERCENT=90").unwrap();
         writeln!(temp_file, "DEBUG_ENABLED=true").unwrap();
         writeln!(temp_file, "DEBUG_OUTPUT_PATH=/tmp/debug.log").unwrap();
         writeln!(temp_file, "LOG_LEVEL=TRACE").unwrap();
@@ -296,10 +330,48 @@ mod tests {
         assert!(!config.output_console_colorized);
         assert!(config.output_ble_enabled);
         assert_eq!(config.output_ble_device_name, "TestDevice");
+        assert!(config.output_file_enabled);
+        assert_eq!(config.output_file_base_path, "/data/recordings");
+        assert_eq!(config.output_file_max_size_mb, 250);
+        assert_eq!(config.output_file_archive_threshold_gb, 10);
+        assert_eq!(config.output_file_critical_disk_percent, 90);
         assert!(config.debug_enabled);
         assert_eq!(config.debug_output_path, "/tmp/debug.log");
         assert_eq!(config.log_level, "TRACE");
         assert_eq!(config.log_dir, "/var/log/test");
+
+        clear_env_vars();
+    }
+
+    /// ID SRS: SRS-TEST-LOADER-008
+    /// Title: Test file output config loading
+    ///
+    /// Description: VRConnect shall load file output configuration from file.
+    ///
+    /// Version: V1.0
+    #[test]
+    #[serial]
+    fn test_load_file_output_config() {
+        clear_env_vars();
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+
+        writeln!(temp_file, "OUTPUT_FILE_ENABLED=true").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_BASE_PATH=/var/data/recording").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_MAX_SIZE_MB=250").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_ARCHIVE_THRESHOLD_GB=10").unwrap();
+        writeln!(temp_file, "OUTPUT_FILE_CRITICAL_DISK_PERCENT=90").unwrap();
+        temp_file.flush().unwrap();
+
+        let result = load_from_file(temp_file.path());
+        assert!(result.is_ok());
+
+        let config = result.unwrap();
+        assert!(config.output_file_enabled);
+        assert_eq!(config.output_file_base_path, "/var/data/recording");
+        assert_eq!(config.output_file_max_size_mb, 250);
+        assert_eq!(config.output_file_archive_threshold_gb, 10);
+        assert_eq!(config.output_file_critical_disk_percent, 90);
 
         clear_env_vars();
     }
