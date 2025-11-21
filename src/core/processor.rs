@@ -529,8 +529,15 @@ mod tests {
 
         let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
 
-        VitalProcessor::process_single_data(&data, &console, &ble, &file, true, &processor.debug_file)
-            .await;
+        VitalProcessor::process_single_data(
+            &data,
+            &console,
+            &ble,
+            &file,
+            true,
+            &processor.debug_file,
+        )
+        .await;
     }
 
     /// ID SRS: SRS-TEST-PROC-014
@@ -634,8 +641,15 @@ mod tests {
 
         let data = ProcessedData::new("VR-TEST".to_string(), vec![room]);
 
-        VitalProcessor::process_single_data(&data, &console, &ble, &file, false, &processor.debug_file)
-            .await;
+        VitalProcessor::process_single_data(
+            &data,
+            &console,
+            &ble,
+            &file,
+            false,
+            &processor.debug_file,
+        )
+        .await;
     }
 
     /// ID SRS: SRS-TEST-PROC-016

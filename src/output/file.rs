@@ -332,8 +332,8 @@ impl FileOutput {
 
         Ok(())
     }
-	
-	/// ID SRS: SRS-FN-FILEOUTPUT-007
+
+    /// ID SRS: SRS-FN-FILEOUTPUT-007
     /// Title: archive_daily_folder
     ///
     /// Description: VRConnect shall archive entire daily folder,
@@ -783,9 +783,7 @@ mod tests {
         let base_path = temp_dir.path().to_str().unwrap().to_string();
 
         // Very small size for testing (1 KB)
-        let file_output = FileOutput::new(base_path.clone(), 1, 5, 95)
-            .await
-            .unwrap();
+        let file_output = FileOutput::new(base_path.clone(), 1, 5, 95).await.unwrap();
 
         // Create large data to exceed 1 KB
         let mut tracks = Vec::new();
@@ -1058,8 +1056,8 @@ mod tests {
         // Should return a valid percentage (0-100)
         assert!(usage <= 100);
     }
-	
-	 /// ID SRS: SRS-TEST-FILEOUT-009
+
+    /// ID SRS: SRS-TEST-FILEOUT-009
     /// Title: Test archive on date change
     ///
     /// Description: VRConnect shall archive previous day when date changes.
@@ -1140,13 +1138,12 @@ mod tests {
         fs::create_dir_all(&daily_dir).unwrap();
 
         // Create files that will exceed threshold
-        let mut file1 = File::create(daily_dir.join("vrconnect_20250121_100000_110000.json")).unwrap();
+        let mut file1 =
+            File::create(daily_dir.join("vrconnect_20250121_100000_110000.json")).unwrap();
         file1.write_all(b"test data content").unwrap();
 
         // This should trigger archiving
-        let result = file_output
-            .check_and_archive_if_needed(&daily_dir)
-            .await;
+        let result = file_output.check_and_archive_if_needed(&daily_dir).await;
 
         assert!(result.is_ok());
     }
@@ -1201,9 +1198,7 @@ mod tests {
         fs::create_dir_all(&daily_dir).unwrap();
 
         // Should return Ok with empty directory
-        let result = file_output
-            .archive_completed_files(&daily_dir, date)
-            .await;
+        let result = file_output.archive_completed_files(&daily_dir, date).await;
         assert!(result.is_ok());
     }
 
@@ -1366,9 +1361,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let base_path = temp_dir.path().to_str().unwrap().to_string();
 
-        let file_output = FileOutput::new(base_path.clone(), 1, 5, 95)
-            .await
-            .unwrap();
+        let file_output = FileOutput::new(base_path.clone(), 1, 5, 95).await.unwrap();
 
         let room = ProcessedRoom {
             room_index: 0,
@@ -1431,12 +1424,7 @@ mod tests {
 
         // Create multiple completed files
         for i in 0..3 {
-            let filename = format!(
-                "vrconnect_{}_{}0000_{}1000.json",
-                date_str,
-                10 + i,
-                10 + i
-            );
+            let filename = format!("vrconnect_{}_{}0000_{}1000.json", date_str, 10 + i, 10 + i);
             let mut file = File::create(daily_dir.join(filename)).unwrap();
             file.write_all(b"test data content").unwrap();
         }
@@ -1494,9 +1482,7 @@ mod tests {
             .await
             .unwrap();
 
-        let usage = file_output
-            .get_disk_usage_percent(temp_dir.path())
-            .unwrap();
+        let usage = file_output.get_disk_usage_percent(temp_dir.path()).unwrap();
 
         assert!(usage <= 100);
         assert!(usage >= 0);
@@ -1532,9 +1518,7 @@ mod tests {
         f2.write_all(b"data2").unwrap();
 
         // Call archive_completed_files
-        let result = file_output
-            .archive_completed_files(&daily_dir, date)
-            .await;
+        let result = file_output.archive_completed_files(&daily_dir, date).await;
 
         assert!(result.is_ok());
 
@@ -1546,8 +1530,8 @@ mod tests {
         let archive_dir = temp_dir.path().join("archive").join(&date_str);
         assert!(archive_dir.exists());
     }
-	
-	/// ID SRS: SRS-TEST-FILEOUT-025
+
+    /// ID SRS: SRS-TEST-FILEOUT-025
     /// Title: Test date change detection during output
     ///
     /// Description: VRConnect shall detect date change and archive previous day.
@@ -1638,9 +1622,7 @@ mod tests {
         let base_path = temp_dir.path().to_str().unwrap().to_string();
 
         // Small size to trigger rotation quickly
-        let file_output = FileOutput::new(base_path.clone(), 1, 5, 95)
-            .await
-            .unwrap();
+        let file_output = FileOutput::new(base_path.clone(), 1, 5, 95).await.unwrap();
 
         let room = ProcessedRoom {
             room_index: 0,
@@ -1759,23 +1741,19 @@ mod tests {
     async fn test_disk_space_critical_warning() {
         // This test verifies the disk usage calculation works
         // We cannot test the actual shutdown without killing the test process
-        
+
         let temp_dir = TempDir::new().unwrap();
         let base_path = temp_dir.path().to_str().unwrap().to_string();
 
         // Set threshold to 0 to ensure it would trigger (but we can't actually exit)
-        let file_output = FileOutput::new(base_path.clone(), 500, 5, 0)
-            .await
-            .unwrap();
+        let file_output = FileOutput::new(base_path.clone(), 500, 5, 0).await.unwrap();
 
         // Get actual disk usage
-        let usage = file_output
-            .get_disk_usage_percent(temp_dir.path())
-            .unwrap();
+        let usage = file_output.get_disk_usage_percent(temp_dir.path()).unwrap();
 
         // Verify the usage check works
         assert!(usage <= 100);
-        
+
         // Note: We cannot actually call check_disk_space() with threshold 0
         // because it would exit the test process
         // The lines 671-687 (process::exit) are intentionally hard to test
@@ -1862,18 +1840,13 @@ mod tests {
         let date_str = "20250307"; // Expected format
 
         // Test archive_completed_files uses correct format
-        let daily_dir = temp_dir
-            .path()
-            .join("data")
-            .join(date_str);
+        let daily_dir = temp_dir.path().join("data").join(date_str);
         fs::create_dir_all(&daily_dir).unwrap();
 
         let file1 = daily_dir.join("vrconnect_20250307_080000_090000.json");
         File::create(&file1).unwrap();
 
-        let result = file_output
-            .archive_completed_files(&daily_dir, date)
-            .await;
+        let result = file_output.archive_completed_files(&daily_dir, date).await;
         assert!(result.is_ok());
 
         // Check archive was created with correct date format
@@ -1897,9 +1870,7 @@ mod tests {
             .await
             .unwrap();
 
-        let usage = file_output
-            .get_disk_usage_percent(temp_dir.path())
-            .unwrap();
+        let usage = file_output.get_disk_usage_percent(temp_dir.path()).unwrap();
 
         // On Windows, should return 0 (fallback)
         assert_eq!(usage, 0);

@@ -413,21 +413,16 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-001
     /// Title: Test SocketIOServer creation
-    /// 
+    ///
     /// Description: VRConnect shall create SocketIOServer with configuration.
-    /// 
+    ///
     /// Version: V1.0
     #[test]
     fn test_socketio_server_creation() {
         let debug_file = Arc::new(RwLock::new(None));
-        
-        let server = SocketIOServer::new(
-            "127.0.0.1".to_string(),
-            3000,
-            false,
-            debug_file,
-        );
-        
+
+        let server = SocketIOServer::new("127.0.0.1".to_string(), 3000, false, debug_file);
+
         assert_eq!(server.host, "127.0.0.1");
         assert_eq!(server.port, 3000);
         assert!(!server.debug_enabled);
@@ -435,23 +430,18 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-002
     /// Title: Test SocketIOServer creation with debug enabled
-    /// 
+    ///
     /// Description: VRConnect shall create SocketIOServer with debug mode.
-    /// 
+    ///
     /// Version: V1.0
     #[test]
     fn test_socketio_server_creation_with_debug() {
         let temp_file = NamedTempFile::new().unwrap();
         let file = temp_file.reopen().unwrap();
         let debug_file = Arc::new(RwLock::new(Some(file)));
-        
-        let server = SocketIOServer::new(
-            "0.0.0.0".to_string(),
-            5000,
-            true,
-            debug_file,
-        );
-        
+
+        let server = SocketIOServer::new("0.0.0.0".to_string(), 5000, true, debug_file);
+
         assert_eq!(server.host, "0.0.0.0");
         assert_eq!(server.port, 5000);
         assert!(server.debug_enabled);
@@ -459,9 +449,9 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-003
     /// Title: Test process_data without debug
-    /// 
+    ///
     /// Description: VRConnect shall process valid vital data without debug logging.
-    /// 
+    ///
     /// Version: V1.0
     #[tokio::test]
     async fn test_process_data_pipeline() {
@@ -510,16 +500,16 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-004
     /// Title: Test process_data with debug enabled
-    /// 
+    ///
     /// Description: VRConnect shall process data and write debug logs.
-    /// 
+    ///
     /// Version: V1.0
     #[tokio::test]
     async fn test_process_data_with_debug() {
         let decompressor = VitalDataDecompressor::new();
         let cleaner = VitalDataCleaner::new();
         let transformer = VitalDataTransformer::new();
-        
+
         let temp_file = NamedTempFile::new().unwrap();
         let file = temp_file.reopen().unwrap();
         let debug_file = Arc::new(RwLock::new(Some(file)));
@@ -564,7 +554,7 @@ mod tests {
         let mut file = temp_file.reopen().unwrap();
         let mut contents = String::new();
         std::io::Read::read_to_string(&mut file, &mut contents).unwrap();
-        
+
         assert!(contents.contains("DECOMPRESSED DATA"));
         assert!(contents.contains("RAW JSON"));
         assert!(contents.contains("CLEANED JSON"));
@@ -573,9 +563,9 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-005
     /// Title: Test process_data with compressed data
-    /// 
+    ///
     /// Description: VRConnect shall decompress zlib compressed data.
-    /// 
+    ///
     /// Version: V1.0
     #[tokio::test]
     async fn test_process_data_compressed() {
@@ -611,9 +601,9 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-006
     /// Title: Test process_data with invalid UTF-8
-    /// 
+    ///
     /// Description: VRConnect shall return error for invalid UTF-8 data.
-    /// 
+    ///
     /// Version: V1.0
     #[tokio::test]
     async fn test_process_data_invalid_utf8() {
@@ -640,9 +630,9 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-007
     /// Title: Test process_data with invalid JSON
-    /// 
+    ///
     /// Description: VRConnect shall return error for invalid JSON.
-    /// 
+    ///
     /// Version: V1.0
     #[tokio::test]
     async fn test_process_data_invalid_json() {
@@ -668,9 +658,9 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-008
     /// Title: Test process_data with empty data
-    /// 
+    ///
     /// Description: VRConnect shall handle empty data gracefully.
-    /// 
+    ///
     /// Version: V1.0
     #[tokio::test]
     async fn test_process_data_empty() {
@@ -696,9 +686,9 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-009
     /// Title: Test process_data with waveform data
-    /// 
+    ///
     /// Description: VRConnect shall process waveform tracks correctly.
-    /// 
+    ///
     /// Version: V1.0
     #[tokio::test]
     async fn test_process_data_waveform() {
@@ -745,9 +735,9 @@ mod tests {
 
     /// ID SRS: SRS-TEST-SOCKETIO-010
     /// Title: Test process_data with multiple rooms
-    /// 
+    ///
     /// Description: VRConnect shall process multiple rooms correctly.
-    /// 
+    ///
     /// Version: V1.0
     #[tokio::test]
     async fn test_process_data_multiple_rooms() {
