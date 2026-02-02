@@ -1767,6 +1767,7 @@ mod tests {
     ///
     /// Version: V1.0
     #[tokio::test]
+    #[allow(unused_variables)]
     #[cfg(unix)]
     async fn test_get_disk_usage_invalid_path() {
         let temp_dir = TempDir::new().unwrap();

@@ -15,8 +15,8 @@ tokio-tungstenite = "0.21"
 futures-util = "0.3"
 
 # Bluetooth Low Energy
-bluer = { version = "0.17", features = ["bluetoothd"] }
-uuid = "1.6"
+ble-windows-server = "0.1"
+uuid = { version = "1.6", features = ["v4"] }  # ADD v4 FEATURE
 
 # Data processing
 serde = { version = "1.0", features = ["derive"] }
