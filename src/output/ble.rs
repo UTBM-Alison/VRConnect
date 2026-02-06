@@ -1,6 +1,6 @@
 // /src/output/ble.rs
 // Module: output.ble
-// Purpose: BLE GATT server output using ble-windows-server with inline data format
+// Purpose: BLE GATT server output using ble-windows-server with per-track characteristics
 
 use crate::domain::ProcessedData;
 use crate::error::{Result, VitalError};
@@ -10,13 +10,13 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 
-/// ID SRS: SRS-MOD-BLE-V2-001
+/// ID SRS: SRS-MOD-BLE-V3-001
 /// Title: BleOutput
 ///
 /// Description: VRConnect shall provide BLE GATT server output transmitting
-/// selected tracks in inline format (key=value|key=value) using ble-windows-server.
+/// each selected track as an individual BLE characteristic using ble-windows-server.
 ///
-/// Version: V2.0
+/// Version: V3.0
 pub struct BleOutput {
     server: Arc<RwLock<WindowsBLEGattServer>>,
     track_names: Vec<String>,
@@ -26,13 +26,14 @@ pub struct BleOutput {
 }
 
 impl BleOutput {
-    /// ID SRS: SRS-FN-BLE-V2-001
+    /// ID SRS: SRS-FN-BLE-V3-001
     /// Title: new
     ///
     /// Description: VRConnect shall construct a BleOutput instance with device
-    /// name, service UUID, track selection, and empty value configuration.
+    /// name, service UUID, and one BLE characteristic per selected track.
+    /// Characteristic UUIDs are derived from service_uuid + (track_index + 1).
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     ///
     /// # Arguments
     /// * `device_name` - BLE advertising name
@@ -74,8 +75,14 @@ impl BleOutput {
         log::info!("  Empty Value: '{}'", empty_value);
         log::info!("  Update Interval: {}ms", update_interval_ms);
 
-        // Create BLE server
-        let server = WindowsBLEGattServer::new(device_name, service_uuid);
+        // Create BLE server and register one characteristic per track
+        let mut server = WindowsBLEGattServer::new(device_name, service_uuid);
+
+        for (i, track_name) in track_names.iter().enumerate() {
+            let char_uuid = Uuid::from_u128(service_uuid.as_u128() + (i as u128) + 1);
+            server.add_characteristic(track_name, char_uuid, track_name);
+            log::info!("  Characteristic: {} -> {}", track_name, char_uuid);
+        }
 
         Ok(Self {
             server: Arc::new(RwLock::new(server)),
@@ -86,13 +93,13 @@ impl BleOutput {
         })
     }
 
-    /// ID SRS: SRS-FN-BLE-V2-002
+    /// ID SRS: SRS-FN-BLE-V3-002
     /// Title: start
     ///
     /// Description: VRConnect shall start BLE GATT server and begin periodic
-    /// data transmission using the configured update interval.
+    /// per-characteristic data transmission using the configured update interval.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     ///
     /// # Returns
     /// Result indicating success or error
@@ -106,7 +113,7 @@ impl BleOutput {
         let empty_value = self.empty_value.clone();
         let interval_ms = self.update_interval_ms;
 
-        // Start the server in a separate task (this blocks until server stops)
+        // Start the server in a separate task
         let server_for_run = self.server.clone();
         tokio::spawn(async move {
             log::info!("BLE server task started");
@@ -119,7 +126,6 @@ impl BleOutput {
                 Err(e) => {
                     log::error!("BLE server failed: {:?}", e);
                     log::error!("Error details: {}", e);
-                    // Check if it's a "No Bluetooth adapters found" error
                     if e.to_string().contains("No Bluetooth adapters found") {
                         log::error!("Please ensure you have a Bluetooth adapter that supports BLE peripheral role.");
                     }
@@ -143,73 +149,35 @@ impl BleOutput {
                 let data_opt = current_data.read().await.clone();
 
                 if let Some(data) = data_opt {
-                    // Build inline data string
-                    let inline_data = Self::build_inline_data(&data, &track_names, &empty_value);
+                    // Build per-track values
+                    let track_values = Self::build_track_values(&data, &track_names, &empty_value);
 
-                    // Send via BLE
+                    // Send each track as its own characteristic notification
                     let server = server_for_updates.read().await;
-                    if let Err(e) = server.notify_str(&inline_data).await {
-                        log::warn!("BLE notification failed: {}", e);
-                    } else {
-                        log::debug!("BLE notification sent: {}", inline_data);
+                    for (name, value) in &track_values {
+                        if let Err(e) = server.notify_str(name, value).await {
+                            log::warn!("BLE notification failed for {}: {}", name, e);
+                        } else {
+                            log::debug!("BLE notify: {} = {}", name, value);
+                        }
                     }
                 }
             }
         });
 
-        log::info!("✓ BLE GATT server started successfully");
-        log::info!("✓ Waiting for BLE client connections...");
+        log::info!("BLE GATT server started successfully");
+        log::info!("Waiting for BLE client connections...");
 
         Ok(())
     }
 
-    /// ID SRS: SRS-FN-BLE-V2-003
-    /// Title: start_update_loop
-    ///
-    /// Description: VRConnect shall run periodic update loop that sends
-    /// current data to BLE clients at configured interval.
-    ///
-    /// Version: V2.0
-    #[allow(dead_code)]
-    async fn start_update_loop(&self) {
-        let server = self.server.clone();
-        let current_data = self.current_data.clone();
-        let track_names = self.track_names.clone();
-        let empty_value = self.empty_value.clone();
-        let interval_ms = self.update_interval_ms;
-
-        tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_millis(interval_ms));
-
-            loop {
-                ticker.tick().await;
-
-                // Get current data
-                let data_opt = current_data.read().await.clone();
-
-                if let Some(data) = data_opt {
-                    // Build inline data string
-                    let inline_data = Self::build_inline_data(&data, &track_names, &empty_value);
-
-                    // Send via BLE
-                    let server = server.read().await;
-                    if let Err(e) = server.notify_str(&inline_data).await {
-                        log::warn!("BLE notification failed: {}", e);
-                    } else {
-                        log::debug!("BLE notification sent: {}", inline_data);
-                    }
-                }
-            }
-        });
-    }
-
-    /// ID SRS: SRS-FN-BLE-V2-004
+    /// ID SRS: SRS-FN-BLE-V3-003
     /// Title: output
     ///
     /// Description: VRConnect shall update current data buffer for BLE transmission,
-    /// filtering tracks from room 1 (BED_01) only.
+    /// filtering tracks from room 0 (BED_01) only.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     ///
     /// # Arguments
     /// * `data` - Processed vital data
@@ -222,14 +190,13 @@ impl BleOutput {
         Ok(())
     }
 
-    /// ID SRS: SRS-FN-BLE-V2-005
-    /// Title: build_inline_data
+    /// ID SRS: SRS-FN-BLE-V3-004
+    /// Title: build_track_values
     ///
-    /// Description: VRConnect shall build inline data string in format:
-    /// "KEY1=value1|KEY2=value2|KEY3=empty_value" from selected tracks.
-    /// Only includes tracks from room index 0 (first room, typically BED_01).
+    /// Description: VRConnect shall build a list of (track_name, value) pairs
+    /// from selected tracks in room index 0. Each pair maps to its own BLE characteristic.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     ///
     /// # Arguments
     /// * `data` - Processed vital data
@@ -237,12 +204,12 @@ impl BleOutput {
     /// * `empty_value` - Value to use when track is missing
     ///
     /// # Returns
-    /// Inline formatted string
-    fn build_inline_data(
+    /// Vec of (track_name, value) pairs
+    fn build_track_values(
         data: &ProcessedData,
         track_names: &[String],
         empty_value: &str,
-    ) -> String {
+    ) -> Vec<(String, String)> {
         // Build a map of track names to values (only from room 0)
         let mut track_map: HashMap<String, String> = HashMap::new();
 
@@ -262,19 +229,17 @@ impl BleOutput {
             }
         }
 
-        // Build inline string in the order specified by track_names
-        let parts: Vec<String> = track_names
+        // Build pairs in the order specified by track_names
+        track_names
             .iter()
             .map(|name| {
                 let value = track_map
                     .get(name)
-                    .map(|v| v.as_str())
-                    .unwrap_or(empty_value);
-                format!("{}={}", name, value)
+                    .cloned()
+                    .unwrap_or_else(|| empty_value.to_string());
+                (name.clone(), value)
             })
-            .collect();
-
-        parts.join("|")
+            .collect()
     }
 }
 
@@ -307,15 +272,15 @@ mod tests {
         }
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-001
-    /// Title: Test inline data building with all tracks present
+    /// ID SRS: SRS-TEST-BLE-V3-001
+    /// Title: Test track values building with all tracks present
     ///
-    /// Description: VRConnect shall build correct inline format when all
+    /// Description: VRConnect shall build correct per-track values when all
     /// requested tracks are present in room 0.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[test]
-    fn test_build_inline_data_all_present() {
+    fn test_build_track_values_all_present() {
         let room = ProcessedRoom {
             room_index: 0,
             room_name: "BED_01".to_string(),
@@ -330,19 +295,22 @@ mod tests {
         let track_names = vec!["HR".to_string(), "SPO2".to_string(), "NIBP_SYS".to_string()];
         let empty_value = "null";
 
-        let result = BleOutput::build_inline_data(&data, &track_names, empty_value);
+        let result = BleOutput::build_track_values(&data, &track_names, empty_value);
 
-        assert_eq!(result, "HR=75|SPO2=98|NIBP_SYS=120");
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], ("HR".to_string(), "75".to_string()));
+        assert_eq!(result[1], ("SPO2".to_string(), "98".to_string()));
+        assert_eq!(result[2], ("NIBP_SYS".to_string(), "120".to_string()));
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-002
-    /// Title: Test inline data building with missing tracks
+    /// ID SRS: SRS-TEST-BLE-V3-002
+    /// Title: Test track values building with missing tracks
     ///
     /// Description: VRConnect shall use empty_value for missing tracks.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[test]
-    fn test_build_inline_data_missing_tracks() {
+    fn test_build_track_values_missing_tracks() {
         let room = ProcessedRoom {
             room_index: 0,
             room_name: "BED_01".to_string(),
@@ -357,19 +325,21 @@ mod tests {
         let track_names = vec!["HR".to_string(), "SPO2".to_string(), "NIBP_SYS".to_string()];
         let empty_value = "null";
 
-        let result = BleOutput::build_inline_data(&data, &track_names, empty_value);
+        let result = BleOutput::build_track_values(&data, &track_names, empty_value);
 
-        assert_eq!(result, "HR=75|SPO2=null|NIBP_SYS=120");
+        assert_eq!(result[0], ("HR".to_string(), "75".to_string()));
+        assert_eq!(result[1], ("SPO2".to_string(), "null".to_string()));
+        assert_eq!(result[2], ("NIBP_SYS".to_string(), "120".to_string()));
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-003
-    /// Title: Test inline data with empty empty_value
+    /// ID SRS: SRS-TEST-BLE-V3-003
+    /// Title: Test track values with empty empty_value
     ///
     /// Description: VRConnect shall support empty string as empty_value.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[test]
-    fn test_build_inline_data_empty_value() {
+    fn test_build_track_values_empty_value() {
         let room = ProcessedRoom {
             room_index: 0,
             room_name: "BED_01".to_string(),
@@ -380,19 +350,20 @@ mod tests {
         let track_names = vec!["HR".to_string(), "SPO2".to_string()];
         let empty_value = ""; // Empty string
 
-        let result = BleOutput::build_inline_data(&data, &track_names, empty_value);
+        let result = BleOutput::build_track_values(&data, &track_names, empty_value);
 
-        assert_eq!(result, "HR=75|SPO2=");
+        assert_eq!(result[0], ("HR".to_string(), "75".to_string()));
+        assert_eq!(result[1], ("SPO2".to_string(), "".to_string()));
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-004
+    /// ID SRS: SRS-TEST-BLE-V3-004
     /// Title: Test case-insensitive track matching
     ///
     /// Description: VRConnect shall match track names case-insensitively.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[test]
-    fn test_build_inline_data_case_insensitive() {
+    fn test_build_track_values_case_insensitive() {
         let room = ProcessedRoom {
             room_index: 0,
             room_name: "BED_01".to_string(),
@@ -407,19 +378,21 @@ mod tests {
         let track_names = vec!["HR".to_string(), "SPO2".to_string(), "NIBP_SYS".to_string()];
         let empty_value = "null";
 
-        let result = BleOutput::build_inline_data(&data, &track_names, empty_value);
+        let result = BleOutput::build_track_values(&data, &track_names, empty_value);
 
-        assert_eq!(result, "HR=75|SPO2=98|NIBP_SYS=120");
+        assert_eq!(result[0], ("HR".to_string(), "75".to_string()));
+        assert_eq!(result[1], ("SPO2".to_string(), "98".to_string()));
+        assert_eq!(result[2], ("NIBP_SYS".to_string(), "120".to_string()));
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-005
+    /// ID SRS: SRS-TEST-BLE-V3-005
     /// Title: Test room filtering (only room 0)
     ///
     /// Description: VRConnect shall only include tracks from room index 0.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[test]
-    fn test_build_inline_data_room_filtering() {
+    fn test_build_track_values_room_filtering() {
         let data = ProcessedData::new(
             "VR-TEST".to_string(),
             vec![
@@ -445,18 +418,20 @@ mod tests {
         let track_names = vec!["HR".to_string(), "SPO2".to_string()];
         let empty_value = "null";
 
-        let result = BleOutput::build_inline_data(&data, &track_names, empty_value);
+        let result = BleOutput::build_track_values(&data, &track_names, empty_value);
 
         // Should only use values from room 0
-        assert_eq!(result, "HR=75|SPO2=98");
+        assert_eq!(result[0], ("HR".to_string(), "75".to_string()));
+        assert_eq!(result[1], ("SPO2".to_string(), "98".to_string()));
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-006
+    /// ID SRS: SRS-TEST-BLE-V3-006
     /// Title: Test BleOutput creation with valid config
     ///
-    /// Description: VRConnect shall create BleOutput with valid configuration.
+    /// Description: VRConnect shall create BleOutput with valid configuration
+    /// and register one characteristic per track.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[tokio::test]
     async fn test_ble_output_creation() {
         let result = BleOutput::new(
@@ -476,12 +451,12 @@ mod tests {
         assert_eq!(ble.update_interval_ms, 100);
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-007
+    /// ID SRS: SRS-TEST-BLE-V3-007
     /// Title: Test BleOutput creation with invalid UUID
     ///
     /// Description: VRConnect shall return error for invalid service UUID.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[tokio::test]
     async fn test_ble_output_invalid_uuid() {
         let result = BleOutput::new(
@@ -496,12 +471,12 @@ mod tests {
         assert!(result.is_err());
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-008
+    /// ID SRS: SRS-TEST-BLE-V3-008
     /// Title: Test BleOutput creation with empty track values
     ///
     /// Description: VRConnect shall return error when track_values is empty.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[tokio::test]
     async fn test_ble_output_empty_tracks() {
         let result = BleOutput::new(
@@ -516,12 +491,12 @@ mod tests {
         assert!(result.is_err());
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-009
+    /// ID SRS: SRS-TEST-BLE-V3-009
     /// Title: Test output method updates data buffer
     ///
     /// Description: VRConnect shall update internal data buffer when output is called.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[tokio::test]
     async fn test_output_updates_buffer() {
         let ble = BleOutput::new(
@@ -552,12 +527,12 @@ mod tests {
         assert!(ble.current_data.read().await.is_some());
     }
 
-    /// ID SRS: SRS-TEST-BLE-V2-010
+    /// ID SRS: SRS-TEST-BLE-V3-010
     /// Title: Test track name trimming and parsing
     ///
     /// Description: VRConnect shall trim whitespace from track names.
     ///
-    /// Version: V2.0
+    /// Version: V3.0
     #[tokio::test]
     async fn test_track_name_parsing() {
         let ble = BleOutput::new(
